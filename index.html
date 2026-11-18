@@ -129,6 +129,7 @@ body.menu .grapple, body.menu .hud { display: none; }
 .how li { display: grid; grid-template-columns: 26px 1fr; gap: 8px; align-items: center; padding: 6px 10px; border-radius: 10px; background: #eadfc6; }
 .how svg { width: 22px; height: 22px; }
 .final { font: 700 64px/1 var(--font-display); color: var(--ink); font-variant-numeric: tabular-nums; }
+.reach { margin: 4px 0 0; font-size: 14px; opacity: .75; }
 .newbest { padding: 3px 12px; border-radius: 999px; background: var(--gold); color: var(--ink); font: 700 14px var(--font-display); letter-spacing: .12em; text-transform: uppercase; animation: bump .5s; }
 .top3-h { margin: 2px 0 -4px !important; font: 700 12px var(--font-display) !important; letter-spacing: .14em; text-transform: uppercase; color: #6d604f !important; }
 .top3 { list-style: none; margin: 0; padding: 0; width: 100%; display: grid; gap: 6px; }
@@ -208,6 +209,7 @@ body.menu .grapple, body.menu .hud { display: none; }
     <ul class="how">
       <li><svg viewBox="0 0 24 24" fill="none" stroke="#3f6b46" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V5M6 11l6-6 6 6"/></svg><span><b>Tap</b> to hop forward. <b>Swipe</b> left, right or back.</span></li>
       <li><svg viewBox="0 0 24 24" fill="none" stroke="#3f6b46" stroke-width="2.4" stroke-linecap="round"><rect x="8" y="3" width="8" height="18" rx="3"/><path d="M8 15h8"/></svg><span>Grab <b>gas canisters</b>. Hit <b>Grapple</b> to fly 4 rows (even over walls), or keep them: each one is a <b>spare life</b>.</span></li>
+      <li><svg viewBox="0 0 24 24" fill="none" stroke="#3f6b46" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="3"/></svg><span>Start in the capital. Break out through <b>six walls</b>, the forest and the dunes to the <b>sea</b>. The giants get bigger the farther you go.</span></li>
       <li><svg viewBox="0 0 24 24" fill="none" stroke="#b5402f" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8 10h.01M16 10h.01M8 15c2.5 2 5.5 2 8 0"/></svg><span>Don't dawdle. Something huge is following you.</span></li>
     </ul>
     <div class="btn-row"><button class="btn primary" id="playBtn">Play</button></div>
@@ -238,6 +240,7 @@ body.menu .grapple, body.menu .hud { display: none; }
     <h2 id="overTitle">Stomped!</h2>
     <p id="overWhy">A giant stepped on you.</p>
     <div class="final" id="finalScore">0</div>
+    <p class="reach" id="overZone"></p>
     <span class="newbest" id="newBest" hidden>New best!</span>
     <p class="top3-h" id="top3H">World top 3</p>
     <ol class="top3" id="top3" aria-label="Top 3 scores"></ol>
@@ -333,42 +336,92 @@ const buzz = p => { try { navigator.vibrate && navigator.vibrate(p); } catch {} 
 
 /* ================= World ================= */
 const COLS = 9;
-const WALL_EVERY = 40;
 const canvas = $('game'), g = canvas.getContext('2d');
 let cw = 1, ch = 1, dpr = 1, T = 40, ox = 0, SIDE = 2, visRows = 16;
 
-const difficulty = r => clamp(r / 220, 0, 1);
+const difficulty = r => clamp(r / 260, 0, 1);
+
+/* The map: start in the walled capital and break out to the sea. Each zone ends in a barrier
+   row (`end`); the sea never ends. Giants get bigger, more common and more erratic outward.
+   mix = lane-type weights, run = most giant lanes in a row, sc = giant size range,
+   abn = chance a giant lane is a fast abnormal, err = how jumpy giant lanes are. */
+const ZONES = [
+  { name: 'the Capital', end: 24, look: 'city', wall: { kind: 'stone', label: 'INNER WALL' },
+    mix: { road: 2.6, water: 1.1, titan: 0.3, cannon: 0, grass: 1.1 }, run: 1, sc: [0.7, 0.85], abn: 0, err: 0, gap: 1.4,
+    props: ['house', 'house', 'lamp', 'crates', 'tree'] },
+  { name: 'the Inner District', end: 40, look: 'town', wall: { kind: 'district', label: 'DISTRICT' },
+    mix: { road: 2.4, water: 1.2, titan: 0.7, cannon: 0.2, grass: 1.0 }, run: 1, sc: [0.8, 0.95], abn: 0, err: 0.1, gap: 1.25,
+    props: ['house', 'house', 'crates', 'hay', 'lamp', 'tree'] },
+  { name: 'the Inner Farmlands', end: 75, look: 'farm', wall: { kind: 'stone', label: 'MIDDLE WALL' },
+    mix: { road: 2.2, water: 1.8, titan: 1.4, cannon: 0.4, grass: 1.0 }, run: 1, sc: [0.85, 1.0], abn: 0.08, err: 0.15, gap: 1.15,
+    props: ['tree', 'tree', 'tree', 'rock', 'crates', 'hay'] },
+  { name: 'the Middle District', end: 91, look: 'town', wall: { kind: 'district', label: 'DISTRICT' },
+    mix: { road: 2.3, water: 1.4, titan: 1.6, cannon: 0.6, grass: 0.9 }, run: 2, sc: [0.9, 1.05], abn: 0.12, err: 0.25, gap: 1.1,
+    props: ['house', 'house', 'crates', 'hay', 'lamp', 'tree'] },
+  { name: 'the Middle Farmlands', end: 126, look: 'farm', wall: { kind: 'stone', label: 'OUTER WALL' },
+    mix: { road: 2.0, water: 1.7, titan: 2.0, cannon: 0.6, grass: 0.9, crawl: 0.35 }, run: 2, sc: [0.95, 1.15], abn: 0.18, err: 0.35, gap: 1.05,
+    props: ['tree', 'tree', 'tree', 'rock', 'crates', 'hay'] },
+  { name: 'the Outer District', end: 142, look: 'town', wall: { kind: 'district', label: 'DISTRICT' },
+    mix: { road: 2.0, water: 1.3, titan: 2.3, cannon: 0.8, grass: 0.8 }, run: 2, sc: [1.0, 1.2], abn: 0.22, err: 0.45, gap: 1.0,
+    props: ['house', 'house', 'crates', 'hay', 'lamp'] },
+  { name: 'the Open Plains', end: 177, look: 'plains', wall: { kind: 'trees', msg: 'Into the forest!' },
+    mix: { road: 1.2, water: 1.3, titan: 3.2, cannon: 0.5, grass: 0.8, crawl: 0.45 }, run: 3, sc: [1.05, 1.3], abn: 0.3, err: 0.6, gap: 0.95,
+    props: ['tree', 'rock', 'rock', 'hay'] },
+  { name: 'the Giant Forest', end: 207, look: 'forest', wall: { kind: 'trees', msg: 'Out of the trees!' },
+    mix: { road: 1.0, water: 1.4, titan: 2.8, cannon: 0, grass: 1.4 }, run: 2, sc: [1.15, 1.4], abn: 0.35, err: 0.7, gap: 0.95,
+    props: ['bigtree', 'bigtree', 'bigtree', 'tree', 'rock'] },
+  { name: 'the Barrens', end: 232, look: 'barren', wall: { kind: 'rocks', msg: 'Over the ridge!' },
+    mix: { road: 1.0, water: 0.9, titan: 3.4, cannon: 0.6, grass: 0.7, crawl: 0.5 }, run: 3, sc: [1.2, 1.45], abn: 0.4, err: 0.8, gap: 0.9,
+    props: ['rock', 'rock', 'deadtree', 'deadtree'] },
+  { name: 'the Dunes', end: 262, look: 'dunes', wall: { kind: 'sea', label: 'SEA WALL', msg: 'The open sea!' },
+    mix: { road: 0.9, water: 1.6, titan: 3.4, cannon: 0.4, grass: 0.8, crawl: 0.4 }, run: 3, sc: [1.25, 1.55], abn: 0.4, err: 0.85, gap: 0.9,
+    props: ['dune', 'dune', 'driftwood', 'rock'] },
+  { name: 'the Sea', end: Infinity, look: 'sea',
+    mix: { road: 0, water: 2.4, titan: 3.8, cannon: 0.5, grass: 0.7 }, run: 3, sc: [1.45, 1.8], abn: 0.3, err: 0.9, gap: 0.85, red: true,
+    props: ['rock', 'driftwood', 'driftwood'] },
+];
+function zoneIdx(r) { for (let i = 0; i < ZONES.length; i++) if (r <= ZONES[i].end) return i; return ZONES.length - 1; }
+const zoneOf = r => ZONES[zoneIdx(r)];
+const zoneStart = i => (i ? ZONES[i - 1].end : -1) + 1;
 
 let W, P, S;          // world rows, player, run state
 let best = store.get('best', 0) | 0;
 
 function freshWorld() {
-  W = { rows: new Map(), top: -9, pathC: 4, plan: [], waterDir: 1 };
+  W = { rows: new Map(), top: -9, pathC: 4, plan: [], planZone: 0, waterDir: 1, crawled: false };
   for (let r = -8; r <= 30; r++) addRow();
 }
 function getRow(r) {
   while (W.top < r) addRow();
-  return W.rows.get(r) || { r, type: 'grass', block: new Uint8Array(COLS).fill(1), obs: [], items: [], deco: [], gas: -1 };
+  return W.rows.get(r) || { r, type: 'grass', block: new Uint8Array(COLS).fill(1), obs: [], items: [], deco: [], gas: -1, z: zoneIdx(r) };
 }
 function nextType(r) {
   if (r < 0) return 'forest';
   if (r <= 3) return 'grass';
-  const m = r % WALL_EVERY;
-  if (m === 0) return 'wall';
-  if (m === WALL_EVERY - 1 || m === 1 || m === 2) return 'grass';
-  if (!W.plan.length) planChunk(r);
+  const zi = zoneIdx(r), z = ZONES[zi], s = zoneStart(zi);
+  if (r === z.end) return 'wall';
+  if (r === z.end - 1 || r === s || r === s + 1) return 'grass';
+  if (W.planZone !== zi) { W.plan.length = 0; W.planZone = zi; }   // each zone plans its own lanes
+  if (!W.plan.length) planChunk(r, zi);
   return W.plan.shift();
 }
-function planChunk(r) {
-  const d = difficulty(r);
-  const opts = [['road', 2.5], ['water', 1.9], ['titan', r > 8 ? 1.5 + d * 1.6 : 0.4], ['cannon', r > 15 ? 0.4 + d * 1.0 : 0], ['grass', 1.0 - d * 0.5]];
-  let sum = 0; for (const o of opts) sum += o[1];
-  let x = Math.random() * sum, type = 'road';
-  for (const o of opts) { x -= o[1]; if (x <= 0) { type = o[0]; break; } }
+function planChunk(r, zi) {
+  const d = difficulty(r), z = ZONES[zi], s = zoneStart(zi);
+  const roomForBand = r + 3 < z.end - 1;
+  let type = 'road';
+  if (z.mix.crawl && !W.crawled && r > s + 5 && roomForBand) type = 'crawl';   // everyone meets the crawler once
+  else {
+    const opts = Object.entries(z.mix).filter(([k]) => k !== 'crawl' || roomForBand);
+    let sum = 0; for (const o of opts) sum += o[1];
+    let x = Math.random() * sum;
+    for (const o of opts) { x -= o[1]; if (x <= 0) { type = o[0]; break; } }
+  }
+  if (type === 'crawl') W.crawled = true;
   const n = type === 'road' ? rint(1, 2 + Math.round(d * 2))
     : type === 'water' ? rint(1, 2 + Math.round(d * 1.5))
-    : type === 'titan' ? rint(1, d > 0.45 ? 2 : 1)
+    : type === 'titan' ? rint(1, z.run)
     : type === 'cannon' ? rint(1, d > 0.6 ? 2 : 1)
+    : type === 'crawl' ? 3
     : rint(1, 2);
   for (let i = 0; i < n; i++) W.plan.push(type);
   if (type !== 'grass') for (let i = rint(1, d > 0.6 ? 1 : 2); i > 0; i--) W.plan.push('grass');
@@ -378,20 +431,20 @@ function addRow() {
   const r = ++W.top;
   const type = nextType(r);
   const d = difficulty(r);
-  const row = { r, type, block: new Uint8Array(COLS), obs: [], items: [], deco: [], gas: -1, dir: 1, speed: 0, gap: 0, last: null };
+  const zi = zoneIdx(r), z = ZONES[zi];
+  const row = { r, type, z: zi, block: new Uint8Array(COLS), obs: [], items: [], deco: [], gas: -1, dir: 1, speed: 0, gap: 0, last: null, mul: 1 };
   if (type === 'forest') {
     row.block.fill(1);
-    for (let c = 0; c < COLS; c++) row.obs.push({ c, kind: Math.random() < 0.75 ? 'tree' : 'rock', v: Math.random() });
+    for (let c = 0; c < COLS; c++) row.obs.push({ c, kind: Math.random() < 0.8 ? 'house' : 'lamp', v: Math.random() });
   } else if (type === 'grass') {
     const prev = W.pathC;
     if (r > 3 && Math.random() < 0.55) W.pathC = clamp(W.pathC + (Math.random() < 0.5 ? -1 : 1), 0, COLS - 1);
-    const m = r % WALL_EVERY;
-    const n = r === 0 ? 2 : r <= 3 ? rint(0, 2) : m === WALL_EVERY - 1 ? 0 : rint(0, 3 + (d > 0.4 ? 1 : 0));
+    const n = r === 0 ? 2 : r <= 3 ? rint(0, 2) : r === z.end - 1 ? 0 : rint(0, 3 + (d > 0.4 ? 1 : 0) + (z.look === 'forest' ? 1 : 0));
     for (let k = 0; k < n; k++) {
       const c = r <= 3 ? pick([0, 1, 7, 8]) : rint(0, COLS - 1);
       if (c === W.pathC || c === prev || row.block[c]) continue;
       row.block[c] = 1;
-      row.obs.push({ c, kind: pick(['tree', 'tree', 'tree', 'rock', 'crates', 'hay']), v: Math.random() });
+      row.obs.push({ c, kind: pick(z.props), v: Math.random() });
     }
     if (r > 4 && Math.random() < 0.13) {
       const free = []; for (let c = 0; c < COLS; c++) if (!row.block[c]) free.push(c);
@@ -409,16 +462,24 @@ function addRow() {
     fillLane(row, true);
   } else if (type === 'titan') {
     row.dir = Math.random() < 0.5 ? 1 : -1;
-    row.abnormal = d > 0.2 && Math.random() < 0.15 + d * 0.3;
-    row.speed = row.abnormal ? rand(2.2, 2.7) + d * 0.5 : rand(0.55, 0.9) + d * 0.45;
+    row.abnormal = Math.random() < z.abn;
+    row.speed = row.abnormal ? rand(2.0, 2.5) + d * 0.5 : rand(0.55, 0.9) + d * 0.45;
+    // jumpy lanes: the giants in them freeze, then lurch forward without warning
+    row.err = z.err * rand(0.5, 1); row.mulT = 1; row.mt = rand(0.5, 2);
     for (let k = rint(1, 4); k > 0; k--) row.deco.push({ x: rand(-SIDE, COLS + SIDE), y: rand(0.3, 0.7), kind: 'print' });
     fillLane(row, true);
   } else if (type === 'cannon') {
     row.dir = Math.random() < 0.5 ? 1 : -1;
     row.state = 'idle'; row.timer = rand(1.2, 3.5);
+  } else if (type === 'crawl') {
+    // the colossal crawler: one huge giant spread over three rows that share one lane
+    const below = W.rows.get(r - 1);
+    if (below && below.type === 'crawl' && below.part < 2) { row.part = below.part + 1; row.band = below.band; }
+    else { row.part = 0; row.band = { items: [], dir: Math.random() < 0.5 ? 1 : -1, speed: rand(1.15, 1.45) + d * 0.3, timer: rand(0, 1.5), r0: r }; }
+    row.items = row.band.items; row.dir = row.band.dir;
   } else if (type === 'wall') {
-    const gate = rint(0, COLS - 2);
-    row.gate = gate; row.wallNo = r / WALL_EVERY;
+    const gate = rint(0, COLS - 2), wd = z.wall;
+    row.gate = gate; row.bk = wd.kind; row.label = wd.label || '';
     W.pathC = gate;
     for (let c = 0; c < COLS; c++) row.block[c] = c === gate || c === gate + 1 ? 0 : 1;
   }
@@ -429,20 +490,29 @@ function addRow() {
 function itemLen(row) {
   if (row.type === 'road') return row.vkind === 'rider' ? 1.3 : row.vkind === 'wagon' ? 3 : 2;
   if (row.type === 'water') return rint(2, difficulty(row.r) > 0.5 ? 3 : 4);
-  return 2;
+  const sc = ZONES[row.z].sc;
+  return 2 * rand(sc[0], sc[1]);   // a giant's footprint grows with its size
 }
 function itemGap(row) {
   const d = difficulty(row.r);
   if (row.type === 'road') return rand(2.4, 5.8) - d * 1.1;
   if (row.type === 'water') return rand(1.1, 2.6) + d * 0.5;
-  return row.abnormal ? rand(7, 11) : rand(4.5, 8.5) - d * 1.2;
+  const z = ZONES[row.z];
+  return Math.max(2.6, (row.abnormal ? rand(7, 11) : rand(4.5, 8.5) - d * 1.2) * z.gap);
 }
 function makeItem(row, x, len) {
   const it = { x, len };
   if (row.type === 'titan') {
+    it.sc = len / 2;
     it.h = rand(2.7, 3.7); it.head = rand(0.85, 1.35); it.wide = rand(0.85, 1.2);
-    it.skin = pick(['#e3b58f', '#d6a07c', '#c98d6b', '#ebc6a3', '#d9b08c']);
-    it.hair = pick(['#3b2a20', '#6b4a2a', '#1e1a17', '#8a6a3a', '#5a5048']);
+    if (ZONES[row.z].red) {
+      it.skin = pick(['#b8432f', '#a63626', '#c4553c', '#983024']);
+      it.hair = pick(['#3a1712', '#2a110d', '#5a241a']);
+      it.red = true;
+    } else {
+      it.skin = pick(['#e3b58f', '#d6a07c', '#c98d6b', '#ebc6a3', '#d9b08c']);
+      it.hair = pick(['#3b2a20', '#6b4a2a', '#1e1a17', '#8a6a3a', '#5a5048']);
+    }
     it.phase = rand(0, TAU); it.look = Math.random();
   } else if (row.type === 'road') {
     it.col = pick(['#9a6b3c', '#7f5a35', '#8c4f36', '#6e6a4a']);
@@ -496,7 +566,8 @@ function hazardAt(row, x, pad = 0) {
   const a = x + 0.5 - 0.3 - pad, b = x + 0.5 + 0.3 + pad;
   for (const it of row.items) {
     let l = it.x + 0.1, rr = it.x + it.len - 0.1;
-    if (row.type === 'titan') { l = it.x + 0.3; rr = it.x + it.len - 0.3; }
+    if (row.type === 'titan') { l = it.x + 0.3 * it.sc; rr = it.x + it.len - 0.3 * it.sc; }
+    else if (row.type === 'crawl') { l = it.x + 0.25; rr = it.x + it.len - 0.25; }
     if (b > l && a < rr) return it;
   }
   return null;
@@ -515,7 +586,7 @@ function tryMove(dx, dr) {
   if ((dx && !dr && Math.abs(tx - P.x) < 0.2) || isBlocked(row, tx)) { P.squash = 0.6; sfx.bump(); return; }
   P.hop = { fx: P.x, fr: P.r, tx, tr, t: 0, dur: 0.11, h: 0.32, kind: 'hop' };
   P.r = tr; P.raft = null; P.idle = 0;
-  if (!S.started) { S.started = true; $('hint').hidden = true; }
+  if (!S.started) { S.started = true; $('hint').hidden = true; S.banner = { text: 'Escape to the sea!', sub: 'Six walls stand in your way', t: 0 }; }
   sfx.hop();
 }
 
@@ -545,7 +616,7 @@ function grapple() {
   P.face = 'up';
   P.hop = { fx: P.x, fr: P.r, tx: target.c, tr: target.r, t: 0, dur: 0.46, h: 2.3, kind: 'grapple' };
   P.r = target.r; P.raft = null; P.idle = 0;
-  if (!S.started) { S.started = true; $('hint').hidden = true; }
+  if (!S.started) { S.started = true; $('hint').hidden = true; S.banner = { text: 'Escape to the sea!', sub: 'Six walls stand in your way', t: 0 }; }
   sfx.zip(); buzz(15);
   updateHud();
 }
@@ -573,7 +644,9 @@ function land() {
     const wr = W.rows.get(r);
     if (wr && wr.type === 'wall' && !wr.passed) {
       wr.passed = true;
-      S.banner = { text: (r < P.r || h.kind === 'grapple') && r !== P.r ? 'Over the wall!' : 'Through the gate!', sub: `Wall ${wr.wallNo} cleared`, t: 0 };
+      const wd = ZONES[wr.z].wall, next = ZONES[wr.z + 1];
+      const over = (r < P.r || h.kind === 'grapple') && r !== P.r;
+      S.banner = { text: wd.msg || (over ? 'Over the wall!' : 'Through the gate!'), sub: next.end === Infinity ? 'No more walls. Survive!' : 'Entering ' + next.name, t: 0 };
       sfx.gate();
     }
   }
@@ -590,6 +663,7 @@ const CAUSES = {
   swept: ['Swept away!', 'Your raft floated off the map.'],
   grab: ['Snatched!', 'Too slow. The giant behind you caught up.'],
   ball: ['Blasted!', 'Watch for the red warning lights.'],
+  crawl: ['Crushed!', 'The crawling colossus never looks where it’s going.'],
 };
 function die(cause) {
   if (!P.alive) return;
@@ -666,10 +740,10 @@ function update(dt) {
   S.shield = Math.max(0, S.shield - dt);
   if (P.alive && S.shield <= 0 && !(P.hop && P.hop.kind === 'grapple')) {
     const row = getRow(P.r);
-    if (row.type === 'road' || row.type === 'titan' || row.type === 'cannon') {
+    if (row.type === 'road' || row.type === 'titan' || row.type === 'cannon' || row.type === 'crawl') {
       const px = P.hop ? lerp(P.hop.fx, P.hop.tx, P.hop.t) : P.x;
       const it = hazardAt(row, px);
-      if (it) die(row.type === 'titan' ? 'titan' : row.type === 'cannon' ? 'ball' : row.vkind);
+      if (it) die(row.type === 'road' ? row.vkind : row.type === 'cannon' ? 'ball' : row.type);
     }
   }
   // camera: follow the player, and creep forward once the run starts
@@ -695,14 +769,24 @@ function update(dt) {
 
 function updateRow(row, dt) {
   if (row.type === 'road' || row.type === 'water' || row.type === 'titan') {
-    const v = row.dir * row.speed * dt;
+    if (row.err > 0) {
+      row.mt -= dt;
+      if (row.mt <= 0) {
+        const k = Math.random();
+        if (k < row.err * 0.45) { row.mulT = 0.06; row.mt = rand(0.5, 1.3); }                               // freeze...
+        else if (k < row.err * 0.9) { row.mulT = row.abnormal ? rand(1.3, 1.6) : rand(1.9, 2.6); row.mt = rand(0.5, 1.1); }  // ...lurch
+        else { row.mulT = rand(0.8, 1.15); row.mt = rand(1.2, 3); }
+      }
+      row.mul += (row.mulT - row.mul) * Math.min(1, dt * 6);
+    }
+    const v = row.dir * row.speed * row.mul * dt;
     for (const it of row.items) {
       it.x += v;
       if (row.type === 'titan') {
         const before = Math.floor(it.phase / Math.PI);
-        it.phase += dt * row.speed * (row.abnormal ? 2.4 : 3.1);
+        it.phase += dt * row.speed * row.mul * (row.abnormal ? 2.4 : 3.1) / Math.sqrt(it.sc);
         if (Math.floor(it.phase / Math.PI) !== before) titanStep(row, it);
-        if (Math.random() < dt * 0.8) steam(it.x + 1 + rand(-0.3, 0.3), row.r + 0.5, it.h * 0.9);
+        if (Math.random() < dt * 0.8) steam(it.x + it.len / 2 + rand(-0.3, 0.3), row.r + 0.5, it.h * it.sc * 0.9);
       }
     }
     const L = SIDE + 4;
@@ -730,14 +814,37 @@ function updateRow(row, dt) {
         row.timer = rand(1.8, 4.2) * (1 - difficulty(row.r) * 0.35);
       }
     }
+  } else if (row.type === 'crawl' && row.part === 1) {
+    // the middle row moves the shared crawler; the other two rows just point at it
+    const b = row.band, L = SIDE + 3;
+    for (const it of b.items) {
+      it.x += b.dir * b.speed * dt;
+      const before = Math.floor(it.phase / Math.PI);
+      it.phase += dt * b.speed * 2.4;
+      if (Math.floor(it.phase / Math.PI) !== before) {
+        const dist = Math.abs(row.r - P.r);
+        if (dist < 9 && S.mode !== 'title') {
+          const k = 1 - dist / 9;
+          S.shake = Math.max(S.shake, 0.18 * k);
+          if (S.t - S.lastThud > 0.12 && S.mode !== 'over') { S.lastThud = S.t; sfx.thud(0.2 + 0.6 * k * k); }
+          dust(it.x + (b.dir > 0 ? it.len - 0.4 : 0.4), row.r - 0.6, 6, '#a08a6a');
+        }
+      }
+      if (Math.random() < dt * 5) steam(it.x + rand(0.6, it.len - 0.6), row.r + rand(-0.3, 0.6), rand(1.6, 2.6));
+    }
+    for (let i = b.items.length - 1; i >= 0; i--) { const it = b.items[i]; if (it.x > COLS + L || it.x + it.len < -L) b.items.splice(i, 1); }
+    if (!b.items.length) {
+      b.timer -= dt;
+      if (b.timer <= 0) { b.items.push({ x: b.dir > 0 ? -L - 5 : COLS + L, len: 5, phase: 0 }); b.timer = rand(2.5, 4.5); }
+    }
   }
 }
 function titanStep(row, it) {
   const dist = Math.abs(row.r - (P ? P.r : 0));
   if (dist > 7 || S.mode === 'title' && Math.random() < 0.7) return;
-  dust(it.x + 1 + rand(-0.4, 0.4), row.r + 0.35, 5, '#b49a74');
+  dust(it.x + it.len / 2 + rand(-0.4, 0.4), row.r + 0.35, 5, ZONES[row.z].look === 'sea' ? '#d8eef7' : '#b49a74');
   const k = 1 - dist / 8;
-  S.shake = Math.max(S.shake, (row.abnormal ? 0.12 : 0.22) * k);
+  S.shake = Math.max(S.shake, (row.abnormal ? 0.12 : 0.22) * k * Math.min(1.6, it.sc));
   if (S.t - S.lastThud > 0.12 && S.mode !== 'over') { S.lastThud = S.t; sfx.thud(0.25 + 0.75 * k * k); }
 }
 function playerRow() {
@@ -778,16 +885,59 @@ const GROUND = {
   titan: ['#8f7652', '#89704d'],
   cannon: ['#6c6660', '#67615b'],
   wall: ['#6f6a5f', '#6f6a5f'],
+  crawl: ['#7d6a52', '#78664e'],
 };
+// each part of the map tints the ground its own way (anything missing falls back to GROUND)
+const GROUND_LOOK = {
+  city:   { grass: ['#a39a88', '#9d9482'], forest: ['#a39a88', '#9d9482'], road: ['#6d6862', '#68635d'], water: ['#46798c', '#43748a'], titan: ['#958a76', '#8f8470'], crawl: ['#8a7f6c', '#857a67'] },
+  town:   { grass: ['#93a05e', '#8c9959'], titan: ['#9a8460', '#937d5a'] },
+  plains: { grass: ['#a0a85a', '#99a155'], titan: ['#a08a5a', '#998455'] },
+  forest: { grass: ['#4f7a3c', '#4a7438'], road: ['#6e5a40', '#69563d'], water: ['#3a6e7a', '#376975'], titan: ['#6d6a45', '#68653f'], crawl: ['#5f5a3e', '#5a553a'] },
+  barren: { grass: ['#8d7f63', '#86795e'], road: ['#77706a', '#726b65'], titan: ['#7d6a52', '#78654e'], cannon: ['#6e665c', '#696157'] },
+  dunes:  { grass: ['#e0c890', '#dac28a'], road: ['#c9ae78', '#c3a873'], water: ['#3f8aa0', '#3b849a'], titan: ['#cdb07c', '#c7aa76'], cannon: ['#b59a68', '#af9463'], crawl: ['#b89c6a', '#b29665'] },
+  sea:    { grass: ['#e3cd95', '#dcc68f'], water: ['#2a5f86', '#285a80'], titan: ['#4f9fae', '#4b99a8'], cannon: ['#7a5c3e', '#74573a'] },
+};
+const lookOf = row => ZONES[row.z || 0].look;
+function groundCol(row) {
+  const L = GROUND_LOOK[lookOf(row)];
+  return ((L && L[row.type]) || GROUND[row.type])[row.r & 1];
+}
+const WALL_STYLE = {
+  stone:    { face: '#a49c8b', lip: '#bdb5a3', mer: '#b3ab99', gate: '#8f8775', base: '#6f6a5f', line: 'rgba(70,60,50,.28)', torch: true },
+  district: { face: '#b9a888', lip: '#cfc0a0', mer: '#c6b796', gate: '#9a8a6c', base: '#77705f', line: 'rgba(90,70,45,.28)', torch: true },
+  sea:      { face: '#7d8985', lip: '#97a39e', mer: null, gate: '#d9c48e', base: '#cdb57f', line: 'rgba(30,50,50,.3)', torch: false },
+  trees:    { gate: '#7a6447', base: '#2f4a2a' },
+  rocks:    { gate: '#8a7d66', base: '#6a655c' },
+};
+const hash = (a, b) => { const n = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return n - Math.floor(n); };
 
 function drawGround(row) {
   const y0 = rowBottom(row.r) - T, y1 = rowBottom(row.r);
-  const shade = GROUND[row.type][row.r & 1];
-  g.fillStyle = shade; g.fillRect(0, y0, cw, T + 1);
+  const look = lookOf(row);
+  g.fillStyle = row.type === 'wall' ? WALL_STYLE[row.bk].base : groundCol(row); g.fillRect(0, y0, cw, T + 1);
   const above = W.rows.get(row.r + 1), below = W.rows.get(row.r - 1);
   if (row.type === 'grass' || row.type === 'forest') {
+    if (look === 'city') {   // cobbles
+      g.strokeStyle = 'rgba(60,50,40,.12)'; g.lineWidth = Math.max(1, T * 0.025); g.beginPath();
+      for (let k = 0; k < 3; k++) {
+        const yy = y0 + T * k / 3; g.moveTo(0, yy); g.lineTo(cw, yy);
+        for (let x = ox - SIDE * T + (k % 2) * T * 0.2; x < cw; x += T * 0.4) { g.moveTo(x, yy); g.lineTo(x, yy + T / 3); }
+      }
+      g.stroke();
+    }
+    const sandy = look === 'dunes' || look === 'sea';
+    if (look === 'sea') {   // wet edges on the sandbars
+      if (!above || above.type !== 'grass') { g.fillStyle = 'rgba(80,120,130,.35)'; g.fillRect(0, y0, cw, T * 0.1); }
+      if (!below || below.type !== 'grass') { g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(0, y1 - T * 0.08, cw, T * 0.08); }
+    }
     for (const d of row.deco) {
       const x = sx(d.x), y = y0 + d.y * T;
+      if (look === 'city') continue;
+      if (sandy) {
+        if (d.kind === 'tuft') { g.strokeStyle = 'rgba(150,120,70,.35)'; g.lineWidth = Math.max(1, T * 0.03); g.beginPath(); g.moveTo(x - T * 0.14, y); g.quadraticCurveTo(x, y - T * 0.06, x + T * 0.14, y); g.stroke(); }
+        else { ell(x, y, T * 0.05, T * 0.035, d.col === '#f2e27a' ? '#f4e7d6' : '#e9b3a4'); }
+        continue;
+      }
       if (d.kind === 'tuft') {
         g.strokeStyle = 'rgba(40,70,25,.45)'; g.lineWidth = Math.max(1, T * 0.035); g.beginPath();
         g.moveTo(x - T * 0.06, y); g.lineTo(x - T * 0.09, y - T * 0.09); g.moveTo(x, y); g.lineTo(x, y - T * 0.12); g.moveTo(x + T * 0.06, y); g.lineTo(x + T * 0.09, y - T * 0.09); g.stroke();
@@ -818,15 +968,27 @@ function drawGround(row) {
       }
     }
     g.stroke();
-    if (!above || above.type !== 'water') { g.fillStyle = 'rgba(30,50,60,.45)'; g.fillRect(0, y0, cw, T * 0.12); }
-    if (!below || below.type !== 'water') { g.fillStyle = 'rgba(230,245,250,.35)'; g.fillRect(0, y1 - T * 0.06, cw, T * 0.06); }
+    const canal = look === 'city' || look === 'town';
+    if (!above || above.type !== 'water') { g.fillStyle = canal ? '#8a8272' : 'rgba(30,50,60,.45)'; g.fillRect(0, y0, cw, T * 0.12); }
+    if (!below || below.type !== 'water') { g.fillStyle = canal ? '#b0a794' : 'rgba(230,245,250,.35)'; g.fillRect(0, y1 - T * (canal ? 0.09 : 0.06), cw, T * (canal ? 0.09 : 0.06)); }
   } else if (row.type === 'titan') {
-    for (const d of row.deco) {
+    if (look === 'sea') {   // shallows: the giants wade, you can too
+      g.strokeStyle = 'rgba(255,255,255,.22)'; g.lineWidth = Math.max(1, T * 0.03); g.beginPath();
+      const ph = S.t * T * 0.3;
+      for (let x = ((ph + row.r * 53) % (T * 1.8)) - T * 1.8; x < cw; x += T * 1.8) { g.moveTo(x, y0 + T * 0.5); g.quadraticCurveTo(x + T * 0.2, y0 + T * 0.43, x + T * 0.4, y0 + T * 0.5); }
+      g.stroke();
+    } else for (const d of row.deco) {
       const x = sx(d.x), y = y0 + d.y * T;
       ell(x, y, T * 0.42, T * 0.17, 'rgba(60,40,20,.25)');
       for (let k = 0; k < 4; k++) ell(x + T * (-0.24 + k * 0.16), y - T * 0.2, T * 0.06, T * 0.05, 'rgba(60,40,20,.25)');
     }
     if (!above || above.type !== 'titan') { g.fillStyle = 'rgba(0,0,0,.12)'; g.fillRect(0, y0, cw, T * 0.06); }
+  } else if (row.type === 'crawl') {
+    // dragged earth: deep gouges along the lane
+    g.strokeStyle = 'rgba(40,25,15,.22)'; g.lineWidth = Math.max(1, T * 0.05); g.beginPath();
+    for (let k = 0; k < 3; k++) { const yy = y0 + T * (0.25 + k * 0.25) + Math.sin(row.r * 3 + k) * T * 0.05; g.moveTo(0, yy); g.lineTo(cw, yy); }
+    g.stroke();
+    if (!above || above.type !== 'crawl') { g.fillStyle = 'rgba(0,0,0,.15)'; g.fillRect(0, y0, cw, T * 0.07); }
   } else if (row.type === 'cannon') {
     g.fillStyle = 'rgba(0,0,0,.18)'; g.fillRect(0, y0 + T * 0.44, cw, T * 0.12);
     g.strokeStyle = 'rgba(0,0,0,.18)'; g.lineWidth = 1; g.beginPath();
@@ -834,7 +996,7 @@ function drawGround(row) {
     g.stroke();
     if (row.state === 'warn' && Math.floor(S.t * 8) % 2 === 0) { g.fillStyle = 'rgba(220,40,30,.35)'; g.fillRect(0, y0, cw, T); }
   } else if (row.type === 'wall') {
-    g.fillStyle = '#8f8775'; g.fillRect(sx(row.gate), y0, 2 * T, T);
+    g.fillStyle = WALL_STYLE[row.bk].gate; g.fillRect(sx(row.gate), y0, 2 * T, T);
   }
 }
 
@@ -851,9 +1013,60 @@ function drawTree(x, y, v) {
     circ(x + T * 0.1, y - T * 0.88, T * 0.2, '#5a9049');
   }
 }
+function drawBigTree(x, y, v, sx2 = 1.5, sy2 = 1.8) {
+  g.save(); g.translate(x, y); g.scale(sx2, sy2); drawTree(0, 0, v); g.restore();
+}
 function drawProp(o, row) {
   const x = sx(o.c + 0.5), y = baseOf(row.r);
   if (o.kind === 'tree') return drawTree(x, y, o.v);
+  if (o.kind === 'bigtree') return drawBigTree(x, y, o.v < 0.5 ? 0.2 : 0.8, 1.35 + o.v * 0.3, 1.7 + o.v * 0.5);
+  if (o.kind === 'house') {
+    const w = T * 0.84, h = T * 0.6;
+    ell(x, y, T * 0.46, T * 0.12, 'rgba(0,0,0,.25)');
+    g.fillStyle = o.v < 0.5 ? '#e8dcc0' : '#d6c3a0'; g.fillRect(x - w / 2, y - h, w, h);
+    g.strokeStyle = '#6b4a2f'; g.lineWidth = Math.max(1, T * 0.035); g.strokeRect(x - w / 2, y - h, w, h);
+    g.beginPath(); g.moveTo(x - w / 2, y - h * 0.55); g.lineTo(x + w / 2, y - h * 0.55); g.stroke();
+    g.fillStyle = '#5a3d26'; g.fillRect(x - T * 0.09, y - T * 0.3, T * 0.18, T * 0.3);
+    g.fillStyle = '#f3d27a'; g.fillRect(x + T * 0.17, y - h * 0.85, T * 0.14, T * 0.12); g.fillRect(x - T * 0.31, y - h * 0.85, T * 0.14, T * 0.12);
+    g.fillStyle = ['#9c4a35', '#7e5a3a', '#5f6b78', '#8b3f2f'][Math.floor(o.v * 4)];
+    g.beginPath(); g.moveTo(x - w / 2 - T * 0.08, y - h); g.lineTo(x, y - h - T * 0.48); g.lineTo(x + w / 2 + T * 0.08, y - h); g.closePath(); g.fill();
+    g.fillStyle = 'rgba(0,0,0,.18)'; g.beginPath(); g.moveTo(x, y - h - T * 0.48); g.lineTo(x + w / 2 + T * 0.08, y - h); g.lineTo(x, y - h); g.closePath(); g.fill();
+    return;
+  }
+  if (o.kind === 'lamp') {
+    ell(x, y, T * 0.16, T * 0.05, 'rgba(0,0,0,.22)');
+    g.fillStyle = '#3a3532'; g.fillRect(x - T * 0.03, y - T * 0.8, T * 0.06, T * 0.8);
+    circ(x, y - T * 0.86, T * 0.2, 'rgba(255,200,100,.22)');
+    g.fillStyle = '#2b2622'; rr(x - T * 0.09, y - T * 0.98, T * 0.18, T * 0.2, T * 0.04); g.fill();
+    g.fillStyle = '#ffcf6b'; g.fillRect(x - T * 0.06, y - T * 0.94, T * 0.12, T * 0.12);
+    return;
+  }
+  if (o.kind === 'deadtree') {
+    ell(x, y, T * 0.3, T * 0.09, 'rgba(0,0,0,.22)');
+    g.strokeStyle = '#5b4a3c'; g.lineCap = 'round'; g.lineWidth = T * 0.1;
+    g.beginPath(); g.moveTo(x, y); g.lineTo(x + T * 0.02, y - T * 0.8); g.stroke();
+    g.lineWidth = T * 0.05; g.beginPath();
+    g.moveTo(x + T * 0.01, y - T * 0.45); g.lineTo(x - T * 0.26, y - T * 0.74);
+    g.moveTo(x + T * 0.02, y - T * 0.6); g.lineTo(x + T * 0.25, y - T * 0.88);
+    g.moveTo(x - T * 0.14, y - T * 0.6); g.lineTo(x - T * 0.14, y - T * 0.86); g.stroke();
+    return;
+  }
+  if (o.kind === 'dune') {
+    g.fillStyle = '#cfb27a'; g.beginPath(); g.ellipse(x, y + T * 0.02, T * 0.48, T * 0.42, 0, Math.PI, TAU); g.fill();
+    g.fillStyle = '#e9d6a6'; g.beginPath(); g.ellipse(x - T * 0.1, y - T * 0.08, T * 0.28, T * 0.24, 0, Math.PI, TAU); g.fill();
+    g.strokeStyle = '#7f8f4a'; g.lineWidth = Math.max(1, T * 0.03); g.beginPath();
+    for (let k = -1; k <= 1; k++) { g.moveTo(x + k * T * 0.12, y - T * 0.32); g.lineTo(x + k * T * 0.16, y - T * 0.58); }
+    g.stroke();
+    return;
+  }
+  if (o.kind === 'driftwood') {
+    ell(x, y, T * 0.4, T * 0.08, 'rgba(0,0,0,.2)');
+    g.strokeStyle = '#a8977f'; g.lineCap = 'round'; g.lineWidth = T * 0.16;
+    g.beginPath(); g.moveTo(x - T * 0.36, y - T * 0.08); g.lineTo(x + T * 0.34, y - T * 0.14); g.stroke();
+    g.lineWidth = T * 0.06; g.beginPath(); g.moveTo(x + T * 0.1, y - T * 0.14); g.lineTo(x + T * 0.24, y - T * 0.4); g.stroke();
+    g.strokeStyle = 'rgba(90,70,50,.4)'; g.lineWidth = Math.max(1, T * 0.025); g.beginPath(); g.moveTo(x - T * 0.3, y - T * 0.09); g.lineTo(x + T * 0.28, y - T * 0.14); g.stroke();
+    return;
+  }
   if (o.kind === 'rock') {
     ell(x, y, T * 0.36, T * 0.1, 'rgba(0,0,0,.22)');
     ell(x, y - T * 0.2, T * 0.36, T * 0.26, '#8c8880');
@@ -938,6 +1151,17 @@ function drawVehicle(it, row) {
 }
 function drawRaft(it, row) {
   const y = rowBottom(row.r) - T * 0.18, x0 = sx(it.x) + T * 0.05, w = it.len * T - T * 0.1;
+  if (lookOf(row) === 'sea') {   // out at sea the rafts are little rowboats
+    g.fillStyle = 'rgba(10,30,45,.35)'; rr(x0 - T * 0.03, y - T * 0.4, w + T * 0.06, T * 0.5, T * 0.2); g.fill();
+    g.fillStyle = '#6d4a2c'; g.beginPath();
+    g.moveTo(x0, y - T * 0.6); g.lineTo(x0 + w, y - T * 0.6); g.lineTo(x0 + w - T * 0.2, y - T * 0.1); g.lineTo(x0 + T * 0.2, y - T * 0.1); g.closePath(); g.fill();
+    g.fillStyle = '#b0844f'; g.fillRect(x0 + T * 0.06, y - T * 0.6, w - T * 0.12, T * 0.14);
+    g.fillStyle = '#e6dfcf'; g.fillRect(x0, y - T * 0.32, w, T * 0.05);
+    g.strokeStyle = 'rgba(40,25,15,.5)'; g.lineWidth = Math.max(1, T * 0.03); g.beginPath();
+    for (let k = 1; k < it.len; k++) { const xx = x0 + k * T - T * 0.05; g.moveTo(xx, y - T * 0.58); g.lineTo(xx, y - T * 0.46); }
+    g.stroke();
+    return;
+  }
   g.fillStyle = 'rgba(20,40,50,.35)'; rr(x0 - T * 0.03, y - T * 0.5, w + T * 0.06, T * 0.6, T * 0.12); g.fill();
   g.fillStyle = '#8b6a43'; rr(x0, y - T * 0.62, w, T * 0.56, T * 0.1); g.fill();
   g.fillStyle = '#a07c51'; rr(x0, y - T * 0.62, w, T * 0.18, T * 0.08); g.fill();
@@ -950,7 +1174,7 @@ function drawRaft(it, row) {
 }
 
 function drawTitanBody(it, cx, base, abnormal, dir) {
-  const s = T, H = it.h * s, ph = it.phase;
+  const s = T * (it.sc || 1), H = it.h * s, ph = it.phase;
   const hipY = -H * 0.42, shY = -H * 0.78, hw = s * 0.4 * it.wide, hr = s * 0.32 * it.head;
   const headY = shY - hr * 0.9;
   const dark = 'rgba(90,40,20,.22)';
@@ -978,6 +1202,11 @@ function drawTitanBody(it, cx, base, abnormal, dir) {
   g.beginPath(); g.moveTo(0, shY + s * 0.2); g.lineTo(0, hipY - s * 0.05);
   g.moveTo(-hw * 0.55, shY + s * 0.22); g.quadraticCurveTo(-hw * 0.2, shY + s * 0.32, 0, shY + s * 0.24);
   g.moveTo(hw * 0.55, shY + s * 0.22); g.quadraticCurveTo(hw * 0.2, shY + s * 0.32, 0, shY + s * 0.24); g.stroke();
+  if (it.red) {   // the sea giants: raw red, all sinew
+    g.strokeStyle = 'rgba(70,10,5,.35)'; g.lineWidth = Math.max(1, s * 0.025); g.beginPath();
+    for (let k = -2; k <= 2; k++) { g.moveTo(k * hw * 0.3, shY + s * 0.3); g.quadraticCurveTo(k * hw * 0.38, (shY + hipY) / 2, k * hw * 0.26, hipY); }
+    g.stroke();
+  }
   // ragged kilt
   const kw = hw * 1.02, ky = hipY - s * 0.12, kb = hipY + s * 0.42;
   g.fillStyle = '#6f5f4b'; g.beginPath(); g.moveTo(-kw, ky); g.lineTo(kw, ky);
@@ -997,9 +1226,9 @@ function drawTitanBody(it, cx, base, abnormal, dir) {
   const hx = dir * s * 0.04;
   ell(hx, headY, hr, hr * 1.12, it.skin);
   g.fillStyle = it.hair; g.beginPath(); g.ellipse(hx, headY - hr * 0.2, hr * 1.04, hr * 0.95, 0, Math.PI * 1.02, Math.PI * 1.98); g.fill();
-  const look = (P ? clamp(P.x + 0.5 - (it.x + 1), -1, 1) : 0) * hr * 0.08;
+  const look = (P ? clamp(P.x + 0.5 - (it.x + it.len / 2), -1, 1) : 0) * hr * 0.08;
   for (const side of [-1, 1]) {
-    ell(hx + side * hr * 0.38, headY - hr * 0.05, hr * 0.2, hr * 0.17, '#fbf7ee');
+    ell(hx + side * hr * 0.38, headY - hr * 0.05, hr * 0.2, hr * 0.17, it.red ? '#ffd27a' : '#fbf7ee');
     circ(hx + side * hr * 0.38 + look, headY - hr * 0.03, hr * 0.08, '#1d1a16');
   }
   // that grin
@@ -1038,46 +1267,125 @@ function drawCannonLane(row) {
 }
 
 function drawWall(row) {
-  const yb = rowBottom(row.r) - T * 0.08, H = T * 1.0, top = yb - H;
+  if (row.bk === 'trees') return drawTreeWall(row);
+  if (row.bk === 'rocks') return drawRockWall(row);
+  const st = WALL_STYLE[row.bk];
+  const yb = rowBottom(row.r) - T * 0.08, H = T * (row.bk === 'district' ? 0.85 : row.bk === 'sea' ? 0.8 : 1.0), top = yb - H;
   const gx0 = sx(row.gate) + T * 0.08, gx1 = sx(row.gate + 2) - T * 0.08;
   // face
-  g.fillStyle = '#a49c8b'; g.fillRect(0, top, cw, H);
-  g.strokeStyle = 'rgba(70,60,50,.28)'; g.lineWidth = Math.max(1, T * 0.03); g.beginPath();
+  g.fillStyle = st.face; g.fillRect(0, top, cw, H);
+  g.strokeStyle = st.line; g.lineWidth = Math.max(1, T * 0.03); g.beginPath();
   for (let k = 1; k < 3; k++) { const yy = top + k * H / 3; g.moveTo(0, yy); g.lineTo(cw, yy); }
   for (let k = 0; k < 3; k++) {
     const off = (k % 2) * T * 0.35;
     for (let x = ox - SIDE * T + off; x < cw; x += T * 0.7) { g.moveTo(x, top + k * H / 3); g.lineTo(x, top + (k + 1) * H / 3); }
   }
   g.stroke();
+  if (row.bk === 'sea') {   // weed line and barnacles where the tide reaches
+    g.fillStyle = 'rgba(50,100,60,.5)'; g.fillRect(0, yb - H * 0.3, cw, H * 0.3);
+    for (let x = ox - SIDE * T; x < cw; x += T * 0.37) circ(x + hash(x, row.r) * T * 0.2, yb - H * (0.35 + hash(row.r, x) * 0.2), T * 0.035, '#d9d4c4');
+  }
   // walkway lip + battlements
-  g.fillStyle = '#bdb5a3'; g.fillRect(0, top - T * 0.22, cw, T * 0.24);
-  g.fillStyle = '#b3ab99';
-  for (let x = ox - SIDE * T; x < cw; x += T * 0.5) g.fillRect(x, top - T * 0.46, T * 0.28, T * 0.26);
+  g.fillStyle = st.lip; g.fillRect(0, top - T * 0.22, cw, T * 0.24);
+  if (st.mer) { g.fillStyle = st.mer; for (let x = ox - SIDE * T; x < cw; x += T * 0.5) g.fillRect(x, top - T * 0.46, T * 0.28, T * 0.26); }
   g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(0, yb - T * 0.08, cw, T * 0.08);
-  // gate arch
   // gate: a squat arch through the wall, portcullis raised
   const aw = gx1 - gx0, ah = H * 0.92, mx = (gx0 + gx1) / 2, sy0 = yb - ah * 0.55;
   const arch = () => { g.beginPath(); g.moveTo(gx0, yb); g.lineTo(gx0, sy0); g.ellipse(mx, sy0, aw / 2, ah * 0.45, 0, Math.PI, TAU); g.lineTo(gx1, yb); };
   arch(); g.fillStyle = '#2a2420'; g.fill();
-  g.fillStyle = '#8f8775'; g.fillRect(gx0 + T * 0.05, yb - T * 0.34, aw - T * 0.1, T * 0.34);
+  g.fillStyle = st.gate; g.fillRect(gx0 + T * 0.05, yb - T * 0.34, aw - T * 0.1, T * 0.34);
   g.save(); arch(); g.clip();
   g.strokeStyle = '#4b4038'; g.lineWidth = Math.max(1, T * 0.05); g.beginPath();
   for (let x = gx0 + aw / 7; x < gx1 - 1; x += aw / 7) { g.moveTo(x, yb - ah); g.lineTo(x, yb - ah + T * 0.3); }
   g.moveTo(gx0, yb - ah + T * 0.22); g.lineTo(gx1, yb - ah + T * 0.22); g.stroke();
   g.restore();
-  arch(); g.strokeStyle = '#7b7262'; g.lineWidth = Math.max(2, T * 0.07); g.stroke();
+  arch(); g.strokeStyle = 'rgba(60,50,40,.55)'; g.lineWidth = Math.max(2, T * 0.07); g.stroke();
   // torches
-  for (const tx of [gx0 - T * 0.2, gx1 + T * 0.2]) {
+  if (st.torch) for (const tx of [gx0 - T * 0.2, gx1 + T * 0.2]) {
     g.fillStyle = '#4b3524'; g.fillRect(tx - T * 0.04, yb - T * 0.62, T * 0.08, T * 0.22);
     const f = 0.8 + Math.sin(S.t * 13 + tx) * 0.2;
     circ(tx, yb - T * 0.7, T * 0.22 * f, 'rgba(255,170,60,.25)');
     circ(tx, yb - T * 0.68, T * 0.08 * f, '#ffb347');
   }
   // plaque on the walkway above the gate
-  const py = top - T * 0.1;
-  g.fillStyle = '#5a5246'; rr(mx - T * 0.55, py - T * 0.17, T * 1.1, T * 0.34, T * 0.06); g.fill();
-  g.fillStyle = '#efe4c8'; g.font = `600 ${Math.round(T * 0.24)}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillText('WALL ' + row.wallNo, mx, py + T * 0.01);
+  if (row.label) {
+    const py = top - T * 0.1;
+    g.font = `600 ${Math.round(T * 0.22)}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    const pw = Math.max(T * 1.1, g.measureText(row.label).width + T * 0.3);
+    g.fillStyle = '#5a5246'; rr(mx - pw / 2, py - T * 0.17, pw, T * 0.34, T * 0.06); g.fill();
+    g.fillStyle = '#efe4c8'; g.fillText(row.label, mx, py + T * 0.01);
+  }
+}
+// the forest edge: a wall of huge trunks with one path through
+function drawTreeWall(row) {
+  const y = baseOf(row.r);
+  for (let c = -SIDE; c < COLS + SIDE; c++) {
+    if (c === row.gate || c === row.gate + 1) continue;
+    const v = hash(c, row.r);
+    drawBigTree(sx(c + 0.5) + (v - 0.5) * T * 0.2, y + T * 0.06, v < 0.55 ? 0.2 : 0.8, 1.45 + v * 0.3, 1.9 + v * 0.5);
+  }
+  g.fillStyle = 'rgba(30,45,25,.5)'; g.fillRect(sx(row.gate) - T * 0.05, y - T * 0.06, T * 0.1, T * 0.1); g.fillRect(sx(row.gate + 2) - T * 0.05, y - T * 0.06, T * 0.1, T * 0.1);
+}
+// the ridge before the dunes: a pile of boulders with a pass
+function drawRockWall(row) {
+  const yb = rowBottom(row.r) - T * 0.06;
+  for (let c = -SIDE; c < COLS + SIDE; c++) {
+    if (c === row.gate || c === row.gate + 1) continue;
+    const v = hash(c, row.r), x = sx(c + 0.5), h = T * (0.95 + v * 0.55);
+    ell(x, yb - T * 0.05, T * 0.6, T * 0.16, 'rgba(0,0,0,.25)');
+    ell(x + (v - 0.5) * T * 0.2, yb - h * 0.45, T * 0.62, h * 0.55, '#7d776c');
+    ell(x - T * 0.14, yb - h * 0.66, T * 0.32, h * 0.26, '#99938a');
+    g.strokeStyle = 'rgba(40,35,30,.35)'; g.lineWidth = Math.max(1, T * 0.03); g.beginPath();
+    g.moveTo(x + T * 0.1, yb - h * 0.9); g.lineTo(x + T * 0.02, yb - h * 0.55); g.lineTo(x + T * 0.16, yb - h * 0.3); g.stroke();
+  }
+}
+
+/* ---- the colossal crawler: a gaunt giant dragging itself across three rows ---- */
+function drawCrawler(it, row) {
+  const b = row.band, L = it.len * T, ph = it.phase;
+  const y = baseOf(row.r);                      // bottom row of the band
+  g.save();
+  if (b.dir > 0) g.translate(sx(it.x), y); else { g.translate(sx(it.x + it.len), y); g.scale(-1, 1); }
+  const bob = Math.sin(ph) * T * 0.08, reach = Math.sin(ph), skin = '#a88d7d', deep = '#7d6559', line = 'rgba(60,35,25,.45)';
+  ell(L * 0.5, -T * 0.9, L * 0.55, T * 1.25, 'rgba(0,0,0,.28)');
+  g.lineCap = 'round'; g.lineJoin = 'round';
+  // hind legs dragging behind
+  for (const k of [0, 1]) {
+    const yy = -T * (0.7 + k * 1.1);
+    g.strokeStyle = k ? deep : skin; g.lineWidth = T * 0.5;
+    g.beginPath(); g.moveTo(L * 0.34, yy - T * 0.5 + bob); g.lineTo(L * 0.14, yy - T * 0.2); g.lineTo(-T * 0.15, yy + T * 0.1); g.stroke();
+  }
+  // body: a long hunched back
+  g.fillStyle = skin; g.beginPath();
+  g.moveTo(L * 0.1, -T * 0.6);
+  g.bezierCurveTo(L * 0.18, -T * 2.9 + bob, L * 0.62, -T * 3.2 + bob, L * 0.8, -T * 2.1 + bob);
+  g.lineTo(L * 0.82, -T * 0.7);
+  g.quadraticCurveTo(L * 0.45, -T * 0.25, L * 0.1, -T * 0.6); g.closePath(); g.fill();
+  g.strokeStyle = line; g.lineWidth = Math.max(1.5, T * 0.05); g.stroke();
+  // spine bumps and ribs
+  g.fillStyle = deep;
+  for (let k = 0; k < 6; k++) { const t = 0.25 + k * 0.1; circ(L * t, -T * (2.55 + Math.sin(t * Math.PI) * 0.45) + bob, T * 0.12, deep); }
+  g.strokeStyle = 'rgba(60,35,25,.3)'; g.lineWidth = Math.max(1, T * 0.04); g.beginPath();
+  for (let k = 0; k < 5; k++) { const x = L * (0.4 + k * 0.08); g.moveTo(x, -T * 2.3 + bob); g.quadraticCurveTo(x + T * 0.25, -T * 1.6, x + T * 0.05, -T * 1.0); }
+  g.stroke();
+  // long arms clawing forward, one after the other
+  for (const k of [0, 1]) {
+    const a = k ? -reach : reach, yy = -T * (0.5 + k * 1.15);
+    const hx = L * 0.98 + a * T * 0.45, hy = yy + Math.max(0, a) * -T * 0.35;
+    g.strokeStyle = k ? deep : skin; g.lineWidth = T * 0.42;
+    g.beginPath(); g.moveTo(L * 0.74, -T * 1.9 + bob); g.lineTo(L * 0.9 + a * T * 0.2, -T * (2.2 - k * 0.3) + bob); g.lineTo(hx, hy); g.stroke();
+    g.lineWidth = T * 0.12;
+    for (let f = -1; f <= 1; f++) { g.beginPath(); g.moveTo(hx, hy); g.lineTo(hx + T * 0.3, hy + f * T * 0.14 + T * 0.08); g.stroke(); }
+  }
+  // the head hangs low between the arms, chin scraping the ground
+  const hx = L * 0.86, hy = -T * 1.15 + bob;
+  ell(hx, hy, T * 0.62, T * 0.68, skin);
+  g.fillStyle = '#4a3a30'; g.beginPath(); g.ellipse(hx - T * 0.1, hy - T * 0.25, T * 0.62, T * 0.5, 0, Math.PI * 1.05, Math.PI * 1.95); g.fill();
+  circ(hx + T * 0.25, hy - T * 0.05, T * 0.11, '#fff3d0'); circ(hx + T * 0.28, hy - T * 0.04, T * 0.05, '#1d1a16');
+  circ(hx - T * 0.05, hy - T * 0.07, T * 0.11, '#fff3d0'); circ(hx - T * 0.02, hy - T * 0.06, T * 0.05, '#1d1a16');
+  g.fillStyle = '#3d1612'; g.beginPath(); g.ellipse(hx + T * 0.12, hy + T * 0.32, T * 0.32, T * 0.14 + Math.max(0, reach) * T * 0.08, 0, 0, TAU); g.fill();
+  g.strokeStyle = '#efe6d2'; g.lineWidth = Math.max(1, T * 0.05); g.beginPath(); g.moveTo(hx - T * 0.15, hy + T * 0.3); g.lineTo(hx + T * 0.4, hy + T * 0.3); g.stroke();
+  g.restore();
 }
 
 /* ---- the scout ---- */
@@ -1200,7 +1508,24 @@ function draw() {
     if (row.type === 'grass' || row.type === 'forest') { for (const o of row.obs) drawProp(o, row); if (row.gas >= 0) drawGas(row); }
     else if (row.type === 'road') for (const it of row.items) drawVehicle(it, row);
     else if (row.type === 'water') for (const it of row.items) drawRaft(it, row);
-    else if (row.type === 'titan') { for (const it of row.items) drawTitanBody(it, sx(it.x + 1), baseOf(r), row.abnormal, row.dir); if (r < pRow && r > pRow - 5 && row.items.length) occluders = true; }
+    else if (row.type === 'titan') {
+      const wade = lookOf(row) === 'sea';
+      for (const it of row.items) {
+        const cx = sx(it.x + it.len / 2), base = baseOf(r);
+        drawTitanBody(it, cx, base, row.abnormal, row.dir);
+        if (wade) {   // knee-deep in the shallows
+          const w = T * 0.9 * it.sc;
+          g.fillStyle = 'rgba(70,150,165,.7)'; g.fillRect(cx - w, base - T * 0.42 * it.sc, w * 2, T * 0.42 * it.sc + T * 0.05);
+          g.strokeStyle = 'rgba(255,255,255,.6)'; g.lineWidth = Math.max(1, T * 0.04); g.beginPath();
+          g.ellipse(cx, base - T * 0.42 * it.sc, w * 0.75, T * 0.08, 0, 0, TAU); g.stroke();
+        }
+      }
+      if (r < pRow && r > pRow - 6 && row.items.length) occluders = true;
+    }
+    else if (row.type === 'crawl') {
+      if (row.part === 0) for (const it of row.items) drawCrawler(it, row);
+      if (r < pRow && r > pRow - 4 && row.items.length) occluders = true;
+    }
     else if (row.type === 'cannon') drawCannonLane(row);
     else if (row.type === 'wall') { drawWall(row); if (r < pRow && r > pRow - 3) occluders = true; }
     if (r === pRow && !drowned && S.cause !== 'grab') drawPlayerNow(ps);
@@ -1238,7 +1563,10 @@ function draw() {
     const y = ch * 0.3 - (1 - Math.min(1, b.t / 0.2)) * 20;
     g.globalAlpha = clamp(a, 0, 1);
     g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.font = `700 ${Math.round(Math.min(46, T * 0.95))}px ${FONT}`;
+    let fs = Math.round(Math.min(46, T * 0.95));
+    g.font = `700 ${fs}px ${FONT}`;
+    const tw = g.measureText(b.text.toUpperCase()).width;
+    if (tw > cw * 0.92) { fs = Math.floor(fs * cw * 0.92 / tw); g.font = `700 ${fs}px ${FONT}`; }
     g.lineWidth = 6; g.strokeStyle = 'rgba(0,0,0,.55)'; g.strokeText(b.text.toUpperCase(), cw / 2, y);
     g.fillStyle = '#f6dc96'; g.fillText(b.text.toUpperCase(), cw / 2, y);
     g.font = `600 ${Math.round(Math.min(20, T * 0.42))}px ${FONT}`;
@@ -1412,6 +1740,8 @@ function gameOver() {
   const [title, why] = CAUSES[S.cause] || CAUSES.titan;
   $('overTitle').textContent = title;
   $('overWhy').textContent = why;
+  const zi = zoneIdx(S.score);
+  $('overZone').textContent = `Made it to ${ZONES[zi].name} · zone ${zi + 1} of ${ZONES.length}`;
   $('finalScore').textContent = S.score.toLocaleString();
   $('newBest').hidden = !isBest;
   overShown = true;
@@ -1513,7 +1843,7 @@ updateHud();
 $('playBtn').focus({ preventScroll: true });
 requestAnimationFrame(frame);
 // expose a tiny hook for automated playtests
-window.__titanHop = { get S() { return S; }, get P() { return P; }, get W() { return W; }, tryMove, grapple, die,
+window.__titanHop = { get S() { return S; }, get P() { return P; }, get W() { return W; }, tryMove, grapple, die, ZONES, zoneIdx, getRow,
   step(sec, dt = 1 / 60) { for (let t = 0; t < sec; t += dt) update(dt); draw(); } };
 })();
 </script>
