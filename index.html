@@ -72,6 +72,19 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--gold); outline-
 .gas { justify-self: end; display: flex; gap: 5px; padding: 8px 10px; border-radius: 12px; background: rgba(20,26,22,.62); box-shadow: inset 0 0 0 2px rgba(243,234,214,.18); pointer-events: none; }
 .gas i { width: 12px; height: 26px; border-radius: 4px; background: rgba(255,255,255,.12); box-shadow: inset 0 0 0 2px rgba(255,255,255,.25); }
 .gas i.on { background: linear-gradient(90deg, #8fa3ab, #e6eef0 45%, #9fb0b7); box-shadow: inset 0 -7px 0 var(--gas); }
+/* progress across the map (swapped for the colossus's health in the final fight) */
+.track, .hp { grid-column: 1 / -1; margin: 8px 6px 0; pointer-events: none; }
+.bar { position: relative; height: 10px; border-radius: 5px; background: rgba(20,26,22,.66); box-shadow: inset 0 0 0 1.5px rgba(243,234,214,.25); }
+.bar .fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 5px; background: linear-gradient(90deg, #8fb35a, var(--gold)); transition: width .25s; }
+.bar .tk { position: absolute; top: -2px; width: 2px; height: 14px; margin-left: -1px; border-radius: 1px; background: rgba(243,234,214,.6); }
+.bar .tk.big { top: -4px; width: 3px; height: 18px; margin-left: -1.5px; background: #efe4c8; }
+.bar .me { position: absolute; top: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; background: var(--cloak); box-shadow: 0 0 0 2.5px #fff, 0 2px 5px rgba(0,0,0,.45); transition: left .25s; }
+.bar .goal { position: absolute; right: -9px; top: 50%; width: 24px; height: 24px; margin-top: -12px; }
+.trk-lbl { margin-top: 6px; text-align: center; font: 600 12px var(--font-display); letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,.88); text-shadow: 0 2px 0 rgba(0,0,0,.5); }
+.hp .segs { display: flex; gap: 4px; padding: 3px; border-radius: 8px; background: rgba(20,12,10,.75); box-shadow: inset 0 0 0 1.5px rgba(255,120,100,.45); }
+.hp i { flex: 1; height: 13px; border-radius: 5px; background: linear-gradient(#ff7a5a, #b5402f); transition: background .2s, transform .2s; }
+.hp i.gone { background: rgba(255,255,255,.1); transform: scaleY(.6); }
+.hp .trk-lbl { color: #ffb8a6; }
 
 .grapple {
   position: fixed;
@@ -91,6 +104,12 @@ body.menu .grapple, body.menu .hud { display: none; }
 .grapple.empty { filter: grayscale(.85) brightness(.75); }
 .grapple.empty b { background: #6c6c6c; }
 .grapple.nope { animation: nope .3s; }
+.grapple.rocket { background: radial-gradient(circle at 50% 35%, #e0644a, var(--brick-deep)); box-shadow: 0 5px 0 #5a1c13, 0 8px 18px rgba(0,0,0,.35), inset 0 0 0 3px rgba(255,255,255,.2); }
+.grapple.rocket:active { box-shadow: 0 2px 0 #5a1c13, inset 0 0 0 3px rgba(255,255,255,.2); }
+.grapple.rocket b { display: none; }
+.grapple.rocket.empty { filter: none; }
+.grapple.rocket::after { content: ""; position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+  background: conic-gradient(rgba(10,5,5,.55) calc(var(--cd, 0) * 1turn), transparent 0); }
 
 .hint {
   position: fixed; left: 50%; bottom: max(120px, calc(env(safe-area-inset-bottom, 0px) + 112px));
@@ -192,6 +211,16 @@ body.menu .grapple, body.menu .hud { display: none; }
     <div class="best">Best <span id="best">0</span></div>
   </div>
   <div class="gas" id="gasPips" role="img" aria-label="Gas canisters: 1 of 3"><i></i><i></i><i></i></div>
+  <div class="track" id="track" role="img" aria-label="Progress">
+    <div class="bar" id="bar"><div class="fill" id="barFill"></div><span class="me" id="barMe"></span>
+      <svg class="goal" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#2a1a16" stroke="#ff7a5a" stroke-width="1.5"/><path d="M12 5c-3.6 0-6 2.4-6 5.6 0 1.9.9 3.2 2.2 4v2.2h7.6v-2.2c1.3-.8 2.2-2.1 2.2-4C18 7.4 15.6 5 12 5z" fill="#efe6d2"/><circle cx="9.6" cy="10.8" r="1.5" fill="#c4361f"/><circle cx="14.4" cy="10.8" r="1.5" fill="#c4361f"/><path d="M10 17.8v1.6M12 17.8v1.6M14 17.8v1.6" stroke="#efe6d2" stroke-width="1.2"/></svg>
+    </div>
+    <div class="trk-lbl" id="trackLbl">The Capital</div>
+  </div>
+  <div class="hp" id="hp" role="img" aria-label="Colossus health: 5 of 5" hidden>
+    <div class="segs" id="hpSegs"><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="trk-lbl">The Colossus</div>
+  </div>
 </header>
 
 <button class="grapple" id="grappleBtn" aria-label="Grapple: fly four rows ahead">
@@ -209,7 +238,7 @@ body.menu .grapple, body.menu .hud { display: none; }
     <ul class="how">
       <li><svg viewBox="0 0 24 24" fill="none" stroke="#3f6b46" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V5M6 11l6-6 6 6"/></svg><span><b>Tap</b> to hop forward. <b>Swipe</b> left, right or back.</span></li>
       <li><svg viewBox="0 0 24 24" fill="none" stroke="#3f6b46" stroke-width="2.4" stroke-linecap="round"><rect x="8" y="3" width="8" height="18" rx="3"/><path d="M8 15h8"/></svg><span>Grab <b>gas canisters</b>. Hit <b>Grapple</b> to fly 4 rows (even over walls), or keep them: each one is a <b>spare life</b>.</span></li>
-      <li><svg viewBox="0 0 24 24" fill="none" stroke="#3f6b46" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="3"/></svg><span>Start in the capital. Break out through <b>six walls</b>, the forest and the dunes to the <b>sea</b>. The giants get bigger the farther you go.</span></li>
+      <li><svg viewBox="0 0 24 24" fill="none" stroke="#3f6b46" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="3"/></svg><span>Start in the capital. Break out through <b>six walls</b>, the forest and the dunes to the <b>sea</b>. The giants get bigger the farther you go, and something waits at the very end.</span></li>
       <li><svg viewBox="0 0 24 24" fill="none" stroke="#b5402f" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8 10h.01M16 10h.01M8 15c2.5 2 5.5 2 8 0"/></svg><span>Don't dawdle. Something huge is following you.</span></li>
     </ul>
     <div class="btn-row"><button class="btn primary" id="playBtn">Play</button></div>
@@ -376,10 +405,13 @@ const ZONES = [
   { name: 'the Dunes', end: 262, look: 'dunes', wall: { kind: 'sea', label: 'SEA WALL', msg: 'The open sea!' },
     mix: { road: 0.9, water: 1.6, titan: 3.4, cannon: 0.4, grass: 0.8, crawl: 0.4 }, run: 3, sc: [1.25, 1.55], abn: 0.4, err: 0.85, gap: 0.9,
     props: ['dune', 'dune', 'driftwood', 'rock'] },
-  { name: 'the Sea', end: Infinity, look: 'sea',
+  { name: 'the Sea', end: 296, look: 'sea',
     mix: { road: 0, water: 2.4, titan: 3.8, cannon: 0.5, grass: 0.7 }, run: 3, sc: [1.45, 1.8], abn: 0.3, err: 0.9, gap: 0.85, red: true,
     props: ['rock', 'driftwood', 'driftwood'] },
+  // the end of the map: a bare sandbar, and the colossus rising out of the water beyond it
+  { name: 'the Last Shore', end: Infinity, look: 'shore', boss: true, mix: { grass: 1 }, run: 1, sc: [1, 1], abn: 0, err: 0, gap: 1, props: [] },
 ];
+const ARENA = 297, ARENA_ROWS = 6;   // rows 297..302 are the fighting ground
 function zoneIdx(r) { for (let i = 0; i < ZONES.length; i++) if (r <= ZONES[i].end) return i; return ZONES.length - 1; }
 const zoneOf = r => ZONES[zoneIdx(r)];
 const zoneStart = i => (i ? ZONES[i - 1].end : -1) + 1;
@@ -399,7 +431,9 @@ function nextType(r) {
   if (r < 0) return 'forest';
   if (r <= 3) return 'grass';
   const zi = zoneIdx(r), z = ZONES[zi], s = zoneStart(zi);
-  if (r === z.end) return 'wall';
+  if (z.boss) return r < ARENA + ARENA_ROWS ? 'grass' : 'forest';
+  if (r >= ARENA - 4) return 'grass';   // a calm stretch of sandbar before the last shore
+  if (r === z.end) return z.wall ? 'wall' : 'grass';
   if (r === z.end - 1 || r === s || r === s + 1) return 'grass';
   if (W.planZone !== zi) { W.plan.length = 0; W.planZone = zi; }   // each zone plans its own lanes
   if (!W.plan.length) planChunk(r, zi);
@@ -435,18 +469,18 @@ function addRow() {
   const row = { r, type, z: zi, block: new Uint8Array(COLS), obs: [], items: [], deco: [], gas: -1, dir: 1, speed: 0, gap: 0, last: null, mul: 1 };
   if (type === 'forest') {
     row.block.fill(1);
-    for (let c = 0; c < COLS; c++) row.obs.push({ c, kind: Math.random() < 0.8 ? 'house' : 'lamp', v: Math.random() });
+    if (r < 0) for (let c = 0; c < COLS; c++) row.obs.push({ c, kind: Math.random() < 0.8 ? 'house' : 'lamp', v: Math.random() });
   } else if (type === 'grass') {
     const prev = W.pathC;
     if (r > 3 && Math.random() < 0.55) W.pathC = clamp(W.pathC + (Math.random() < 0.5 ? -1 : 1), 0, COLS - 1);
-    const n = r === 0 ? 2 : r <= 3 ? rint(0, 2) : r === z.end - 1 ? 0 : rint(0, 3 + (d > 0.4 ? 1 : 0) + (z.look === 'forest' ? 1 : 0));
+    const n = z.boss || r >= ARENA - 2 ? 0 : r === 0 ? 2 : r <= 3 ? rint(0, 2) : r === z.end - 1 ? 0 : rint(0, 3 + (d > 0.4 ? 1 : 0) + (z.look === 'forest' ? 1 : 0));
     for (let k = 0; k < n; k++) {
       const c = r <= 3 ? pick([0, 1, 7, 8]) : rint(0, COLS - 1);
       if (c === W.pathC || c === prev || row.block[c]) continue;
       row.block[c] = 1;
       row.obs.push({ c, kind: pick(z.props), v: Math.random() });
     }
-    if (r > 4 && Math.random() < 0.13) {
+    if (r > 4 && !z.boss && Math.random() < 0.13) {
       const free = []; for (let c = 0; c < COLS; c++) if (!row.block[c]) free.push(c);
       if (free.length) row.gas = pick(free);
     }
@@ -547,8 +581,10 @@ function newRun() {
   S = {
     mode: S ? S.mode : 'title', paused: false, t: 0, camY: -4.2, started: false,
     score: 0, gas: 1, queued: null, shake: 0, parts: [], banner: null,
-    cause: '', deathT: 0, deathWait: 1, shield: 0, chaserX: 4, lastThud: 0, flash: 0, grabX: 0,
+    cause: '', deathT: 0, deathWait: 1, shield: 0, chaserX: 4, lastThud: 0, flash: 0, grabX: 0, boss: null,
   };
+  setRocketMode(false);
+  shownProg = -1;
   updateHud();
 }
 
@@ -583,7 +619,7 @@ function tryMove(dx, dr) {
   let tx = P.x + dx;
   if (row.type !== 'water') tx = Math.round(tx);
   tx = clamp(tx, 0, COLS - 1);
-  if ((dx && !dr && Math.abs(tx - P.x) < 0.2) || isBlocked(row, tx)) { P.squash = 0.6; sfx.bump(); return; }
+  if ((dx && !dr && Math.abs(tx - P.x) < 0.2) || isBlocked(row, tx) || (S.boss && tr < ARENA)) { P.squash = 0.6; sfx.bump(); return; }
   P.hop = { fx: P.x, fr: P.r, tx, tr, t: 0, dur: 0.11, h: 0.32, kind: 'hop' };
   P.r = tr; P.raft = null; P.idle = 0;
   if (!S.started) { S.started = true; $('hint').hidden = true; S.banner = { text: 'Escape to the sea!', sub: 'Six walls stand in your way', t: 0 }; }
@@ -591,7 +627,9 @@ function tryMove(dx, dr) {
 }
 
 function grapple() {
-  if (S.mode !== 'play' || S.paused || !P.alive || P.hop) return;
+  if (S.mode !== 'play' || S.paused || !P.alive) return;
+  if (S.boss) return fireRocket();   // in the final fight the button fires rockets
+  if (P.hop) return;
   const btn = $('grappleBtn');
   if (S.gas < 1) { btn.classList.remove('nope'); void btn.offsetWidth; btn.classList.add('nope'); sfx.bump(); return; }
   const cx = clamp(Math.round(P.x), 0, COLS - 1);
@@ -651,6 +689,7 @@ function land() {
     }
   }
   if (P.r > S.score) { S.score = P.r; updateHud(); }
+  if (!S.boss && P.r >= ARENA) startBoss();
   if (S.queued) { const q = S.queued; S.queued = null; tryMove(q[0], q[1]); }
 }
 
@@ -664,6 +703,10 @@ const CAUSES = {
   grab: ['Snatched!', 'Too slow. The giant behind you caught up.'],
   ball: ['Blasted!', 'Watch for the red warning lights.'],
   crawl: ['Crushed!', 'The crawling colossus never looks where it’s going.'],
+  slam: ['Smashed!', 'The colossus brought its fist down on you.'],
+  sweep: ['Boiled!', 'A blast of steam swept the shore. Watch for the red row.'],
+  shard: ['Skewered!', 'Bones rained down. Watch for the red circles.'],
+  won: ['Victory!', 'The colossus crumbles into the sea. You made it out!'],
 };
 function die(cause) {
   if (!P.alive) return;
@@ -711,6 +754,292 @@ function revive() {
   updateHud();
 }
 
+/* ================= The final fight: the colossus at the edge of the world =================
+   Reach the Last Shore and a skeletal colossus rises out of the sea. Grapple becomes Rocket:
+   line up under its glowing heart and fire. Five hits bring it down. It slams its fists,
+   blasts steam down whole rows and rains bone shards, and it guards with its arms now and then. */
+const BOSS_HP = 5, ROCKET_CD = 1.4;
+const GRAPPLE_SVG = $('grappleBtn').querySelector('svg').innerHTML;
+const ROCKET_SVG = '<path d="M20 3c5 4 7.5 10 7 17l-3 6h-8l-3-6c-.5-7 2-13 7-17z"/><circle cx="20" cy="15" r="2.6"/><path d="M13 21l-4.5 7 6.5-1.5M27 21l4.5 7-6.5-1.5"/><path d="M17 30l-1 5M20 30v6M23 30l1 5" stroke-dasharray="2 2"/>';
+const rowAtY = y => S.camY + (ch - y - 0.24 * T) / T;   // screen y -> world row (for particles)
+
+function startBoss() {
+  S.boss = { hp: BOSS_HP, x: 3.5, tx: 3.5, t: 0, rise: 0, guard: 0, guardCd: rand(4, 6), atkT: 3.2, atks: [], rockets: [], cd: 0, hit: 0, dying: -1, gasT: 7 };
+  S.banner = { text: 'The colossus rises!', sub: 'Hit its glowing heart 5 times', t: 0 };
+  sfx.thud(1); S.shake = 1.2; buzz([60, 40, 90]);
+  setRocketMode(true);
+}
+function setRocketMode(on) {
+  const btn = $('grappleBtn');
+  btn.classList.toggle('rocket', on);
+  btn.querySelector('svg').innerHTML = on ? ROCKET_SVG : GRAPPLE_SVG;
+  btn.querySelector('span').textContent = on ? 'ROCKET' : 'GRAPPLE';
+  btn.setAttribute('aria-label', on ? 'Fire a rocket straight ahead' : 'Grapple: fly four rows ahead');
+  btn.style.setProperty('--cd', 0);
+  $('track').hidden = on; $('hp').hidden = !on;
+  if (on) updateHp();
+}
+function updateHp() {
+  const segs = $('hpSegs').children;
+  for (let i = 0; i < BOSS_HP; i++) segs[i].classList.toggle('gone', i >= S.boss.hp);
+  $('hp').setAttribute('aria-label', `Colossus health: ${S.boss.hp} of ${BOSS_HP}`);
+}
+function fireRocket() {
+  const B = S.boss, btn = $('grappleBtn');
+  if (B.dying >= 0 || B.rise < 1) return;
+  if (B.cd > 0) { btn.classList.remove('nope'); void btn.offsetWidth; btn.classList.add('nope'); sfx.bump(); return; }
+  const x = P.hop ? lerp(P.hop.fx, P.hop.tx, P.hop.t) : P.x;
+  B.rockets.push({ x, y: playerScreen().y - T * 0.7, vy: T * 5 });
+  B.cd = ROCKET_CD;
+  P.face = 'up';
+  sfx.zip(); buzz(15);
+  dust(x + 0.5, P.r + 0.3, 6, '#e8d9b0');
+}
+function bossGeo() {
+  const Bs = S.boss;
+  const wy0 = rowBottom(ARENA + ARENA_ROWS + 1.6);            // where it stands in the water
+  const top = $('hp').getBoundingClientRect().bottom + 14;    // keep the skull clear of the HUD
+  const B = clamp((wy0 - top) / 7.3, T * 0.42, T * 1.15);
+  const lift = Math.pow(1 - Bs.rise, 3) * B * 8;
+  const sink = Bs.dying >= 0 ? Math.pow(Bs.dying / 3, 2) * B * 8 : 0;
+  const wy = wy0 + lift + sink + Math.sin(S.t * 1.6) * B * 0.08;
+  return { bx: sx(Bs.x + 0.5), wy0, wy, B, coreY: wy - 3.0 * B };
+}
+function bossHit() {
+  const B = S.boss;
+  B.hp--; B.hit = 0.6; S.shake = 0.9; sfx.boom(); buzz([30, 30, 70]);
+  S.score += 20; updateHud(); updateHp();
+  B.atkT = Math.max(B.atkT, 1.3);   // a breather after each hit
+  if (B.hp <= 0) {
+    B.dying = 0; B.atks.length = 0; S.shield = 99;
+    S.banner = { text: 'It’s going down!', sub: 'The colossus is falling', t: 0 };
+  } else S.banner = { text: 'Direct hit!', sub: B.hp === 1 ? 'One more!' : `${B.hp} more to bring it down`, t: 0 };
+}
+function boomAt(x, y, n = 22) {
+  const r = rowAtY(y);
+  for (let i = 0; i < n; i++) addPart(x + rand(-0.2, 0.2), r + rand(-0.2, 0.2), rand(0, 0.3), rand(-2.2, 2.2), rand(-1.2, 1.2), rand(0.5, 3), rand(0.3, 0.7), pick(['#ffb347', '#ff6a3a', '#fff1c1', '#ffd27a']), rand(0.06, 0.14), 2);
+  for (let i = 0; i < 6; i++) addPart(x + rand(-0.3, 0.3), r, 0.3, rand(-0.5, 0.5), rand(-0.3, 0.3), rand(0.3, 1), rand(0.6, 1.1), 'smoke', rand(0.2, 0.35), -0.4);
+}
+function dropGas() {
+  for (let r = ARENA; r < ARENA + ARENA_ROWS; r++) if (getRow(r).gas >= 0) return;
+  for (let k = 0; k < 10; k++) {
+    const r = rint(ARENA, ARENA + ARENA_ROWS - 1), c = rint(0, COLS - 1);
+    if (r === P.r && c === Math.round(P.x)) continue;
+    getRow(r).gas = c; sparkle(c + 0.5, r + 0.5); return;
+  }
+}
+function launchAttack() {
+  const B = S.boss, hurt = BOSS_HP - B.hp;
+  const px = clamp(Math.round(P.x), 0, COLS - 1), pr = P.hop ? P.hop.tr : P.r;
+  const k = Math.random();
+  if (k < 0.45) B.atks.push({ kind: 'slam', c: px, r: pr, t: 0, warn: 1.1 - hurt * 0.08, side: px + 0.5 < B.x + 0.5 ? -1 : 1 });
+  else if (k < 0.75 || hurt < 2) { B.atks.push({ kind: 'sweep', r: pr, t: 0, warn: 1.15 - hurt * 0.06, dir: Math.random() < 0.5 ? 1 : -1 }); sfx.warn(); }
+  else for (let i = 0; i < 3 + Math.min(2, hurt); i++) {
+    B.atks.push({ kind: 'shard', c: i ? rint(0, COLS - 1) : px, r: i ? rint(ARENA, ARENA + ARENA_ROWS - 1) : pr, t: -i * 0.12, warn: 1.0 });
+  }
+  if (hurt >= 3 && Math.random() < 0.4) {   // late in the fight it doubles up
+    let r = rint(ARENA, ARENA + ARENA_ROWS - 1); if (r === pr) r = r > ARENA ? r - 1 : r + 1;
+    B.atks.push({ kind: 'sweep', r, t: -0.3, warn: 1.2, dir: Math.random() < 0.5 ? 1 : -1 });
+  }
+}
+function stepAttack(a, dt) {
+  a.t += dt;
+  const px = P.hop ? lerp(P.hop.fx, P.hop.tx, P.hop.t) : P.x, pr = playerRow();
+  const canHit = P.alive && S.shield <= 0 && S.mode === 'play';
+  if (a.kind === 'slam') {
+    if (!a.hit && a.t >= a.warn) {
+      a.hit = true; S.shake = Math.max(S.shake, 0.9); sfx.thud(1); buzz(30);
+      dust(a.c + 0.5, a.r + 0.3, 18, '#d9c48c');
+      if (canHit && Math.abs(px - a.c) < 1.15 && Math.abs(pr - a.r) < 0.85) die('slam');
+    }
+    if (a.t > a.warn + 0.6) a.gone = true;
+  } else if (a.kind === 'sweep') {
+    if (a.t >= a.warn) {
+      if (!a.fired) { a.fired = true; sfx.boom(); }
+      const run = (a.t - a.warn) * 15;
+      a.front = a.dir > 0 ? -1 + run : COLS + 1 - run;
+      if (canHit && Math.abs(pr - a.r) < 0.6 && (a.dir > 0 ? px + 0.2 < a.front : px + 0.8 > a.front)) die('sweep');
+      if (run > COLS + 2 + 5) a.gone = true;   // the steam hangs for a moment after it crosses
+    }
+  } else if (a.kind === 'shard') {
+    if (!a.hit && a.t >= a.warn) {
+      a.hit = true; sfx.crash(); dust(a.c + 0.5, a.r + 0.3, 8, '#efe6d2');
+      if (canHit && Math.abs(px - a.c) < 0.6 && Math.abs(pr - a.r) < 0.6) die('shard');
+    }
+    if (a.t > a.warn + 0.55) a.gone = true;
+  }
+}
+function updateBoss(dt) {
+  const B = S.boss;
+  B.t += dt; B.rise = Math.min(1, B.rise + dt / 2.2);
+  B.cd = Math.max(0, B.cd - dt); B.hit = Math.max(0, B.hit - dt);
+  $('grappleBtn').style.setProperty('--cd', (B.cd / ROCKET_CD).toFixed(3));
+  const G = bossGeo();
+  for (const rk of B.rockets) {
+    rk.vy = Math.min(T * 22, rk.vy + T * 45 * dt); rk.y -= rk.vy * dt;
+    if (Math.random() < 0.9) addPart(rk.x + 0.5 + rand(-0.08, 0.08), rowAtY(rk.y + T * 0.35), 0, rand(-0.3, 0.3), -0.4, 0.1, 0.45, 'smoke', 0.1, -0.2);
+    if (B.dying < 0 && B.rise >= 1 && rk.y <= G.coreY + G.B * 0.45 && Math.abs(rk.x - B.x) <= 0.5 + (G.B / T) * 0.5) {
+      rk.done = true; boomAt(rk.x + 0.5, rk.y);
+      if (B.guard > 0) { sfx.crash(); S.banner = { text: 'Blocked!', sub: 'Wait for it to lower its arms', t: 0 }; }
+      else bossHit();
+    }
+  }
+  B.rockets = B.rockets.filter(rk => !rk.done && rk.y > -T);
+  if (B.dying >= 0) {
+    B.dying += dt;
+    if (Math.random() < dt * 14) steam(B.x + 0.5 + rand(-2, 2) * G.B / T, rowAtY(G.wy - rand(1, 6) * G.B), rand(0, 0.6));
+    if (Math.random() < dt * 4) { S.shake = Math.max(S.shake, 0.5); sfx.thud(0.6); }
+    if (B.dying > 3.4 && S.mode === 'play') { S.mode = 'dead'; S.cause = 'won'; S.deathT = 0; gameOver(); }
+    return;
+  }
+  if (B.rise < 1) { if (Math.random() < dt * 10) steam(B.x + 0.5 + rand(-2, 2), ARENA + ARENA_ROWS + 1.2, 0.2); return; }
+  // drift from side to side, faster as it gets hurt
+  const spd = 1.1 + (BOSS_HP - B.hp) * 0.3;
+  if (Math.abs(B.tx - B.x) < 0.1) B.tx = rand(1.2, COLS - 2.2);
+  B.x += clamp(B.tx - B.x, -spd * dt, spd * dt);
+  if (B.guard > 0) B.guard -= dt;
+  else if ((B.guardCd -= dt) <= 0) { B.guard = rand(1.0, 1.6); B.guardCd = rand(3.5, 6) - (BOSS_HP - B.hp) * 0.35; }
+  if (S.mode === 'play' && P.alive) {
+    B.atkT -= dt;
+    if (B.atkT <= 0) { launchAttack(); B.atkT = rand(2.0, 2.8) - (BOSS_HP - B.hp) * 0.3; }
+  }
+  for (const a of B.atks) stepAttack(a, dt);
+  B.atks = B.atks.filter(a => !a.gone);
+  if ((B.gasT -= dt) <= 0) { B.gasT = 9; if (S.gas < 3) dropGas(); }
+  if (Math.random() < dt * 3) steam(B.x + 0.5 + rand(-2.2, 2.2) * G.B / T, rowAtY(G.wy - 4.8 * G.B), 0);
+}
+
+/* ---- drawing the colossus ---- */
+function boneLimb(x0, y0, x1, y1, w, col = '#e9e1cd') {
+  g.lineCap = 'round';
+  g.strokeStyle = '#4f4436'; g.lineWidth = w + Math.max(2, w * 0.22); g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+  g.strokeStyle = col; g.lineWidth = w; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+  circ(x0, y0, w * 0.62, col); circ(x1, y1, w * 0.62, col);
+}
+function boneHand(x, y, s, sd, closed) {
+  circ(x, y, s * 0.5, '#4f4436'); circ(x, y, s * 0.42, '#e9e1cd');
+  g.strokeStyle = '#e9e1cd'; g.lineCap = 'round'; g.lineWidth = s * 0.16;
+  for (let f = -1.5; f <= 1.5; f++) {
+    const a = Math.PI / 2 + f * 0.32 + (closed ? 0 : sd * 0.2), L = s * (closed ? 0.55 : 0.9);
+    g.beginPath(); g.moveTo(x + Math.cos(a) * s * 0.3, y + Math.sin(a) * s * 0.3); g.lineTo(x + Math.cos(a) * (s * 0.3 + L), y + Math.sin(a) * (s * 0.3 + L)); g.stroke();
+  }
+}
+function drawBoss() {
+  const Bs = S.boss, G = bossGeo(), B = G.B, bone = '#e9e1cd', ink = '#4f4436';
+  g.save();
+  g.beginPath(); g.rect(-60, -60, cw + 120, G.wy0 + 60); g.clip();    // everything below the waterline is hidden
+  const tilt = Bs.dying >= 0 ? Math.min(0.4, Bs.dying * 0.13) * (Bs.x < 3.5 ? 1 : -1) : 0;
+  g.translate(G.bx, G.wy); g.rotate(tilt);
+  const shY = -4.8 * B, shX = 2.3 * B, lw = Math.max(1.5, B * 0.07);
+  const guard = Bs.guard > 0 && Bs.dying < 0;
+  const slamSide = sd => Bs.atks.some(a => a.kind === 'slam' && a.side === sd);
+  const arms = front => {
+    for (const sd of [-1, 1]) {
+      if (slamSide(sd)) { if (!front) boneLimb(sd * shX, shY, sd * 2.9 * B, shY - 0.6 * B, B * 0.34); continue; }  // that arm is out over the shore
+      if (guard !== front) continue;
+      if (guard) { boneLimb(sd * shX, shY, sd * 2.3 * B, -2.2 * B, B * 0.34); boneLimb(sd * 2.3 * B, -2.2 * B, -sd * 0.7 * B, -3.6 * B, B * 0.28); boneHand(-sd * 0.7 * B, -3.6 * B, B * 0.7, sd, true); }
+      else { const sw = Math.sin(S.t * 1.3 + sd) * B * 0.15; boneLimb(sd * shX, shY, sd * 3.3 * B, -2.9 * B + sw, B * 0.34); boneLimb(sd * 3.3 * B, -2.9 * B + sw, sd * 3.7 * B, -0.3 * B, B * 0.28); boneHand(sd * 3.7 * B, -0.3 * B, B * 0.7, sd, false); }
+    }
+  };
+  arms(false);
+  // spine
+  for (let k = 0; k < 9; k++) { const y = -0.3 * B - k * 0.55 * B; ell(0, y, B * 0.27, B * 0.21, ink); ell(0, y, B * 0.22, B * 0.16, bone); }
+  // the heart: its weak spot, glowing inside the ribs
+  const pulse = 0.8 + Math.sin(S.t * 5) * 0.2, flash = Bs.hit > 0 && Math.floor(Bs.hit * 16) % 2 === 0;
+  circ(0, -3.0 * B, B * 1.05 * pulse, 'rgba(255,90,40,.22)');
+  circ(0, -3.0 * B, B * 0.5, flash ? '#ffffff' : '#ff5a2a');
+  circ(0, -3.05 * B, B * 0.24 * pulse, flash ? '#ffffff' : '#ffd27a');
+  // ribs
+  for (let k = 0; k < 5; k++) {
+    const y0 = -4.35 * B + k * 0.62 * B, w = (1.95 - Math.abs(k - 1.4) * 0.2) * B;
+    for (const sd of [-1, 1]) {
+      g.beginPath(); g.moveTo(0, y0); g.bezierCurveTo(sd * w * 0.75, y0 - 0.4 * B, sd * w * 1.05, y0 + 0.25 * B, sd * w * 0.72, y0 + 0.85 * B);
+      g.strokeStyle = ink; g.lineWidth = B * 0.2 + lw; g.stroke(); g.strokeStyle = bone; g.lineWidth = B * 0.2; g.stroke();
+    }
+  }
+  // collarbones, shoulders and the torn sinew still hanging off them
+  g.beginPath(); g.moveTo(-shX, shY); g.quadraticCurveTo(0, shY + 0.5 * B, shX, shY);
+  g.strokeStyle = ink; g.lineWidth = B * 0.26 + lw; g.stroke(); g.strokeStyle = bone; g.lineWidth = B * 0.26; g.stroke();
+  for (const sd of [-1, 1]) {
+    circ(sd * shX, shY, B * 0.42, ink); circ(sd * shX, shY, B * 0.36, bone);
+    g.strokeStyle = 'rgba(142,59,44,.75)'; g.lineWidth = B * 0.09; g.beginPath();
+    g.moveTo(sd * (shX - 0.3 * B), shY + 0.2 * B); g.quadraticCurveTo(sd * (shX - 0.1 * B), shY + 1.0 * B, sd * (shX - 0.45 * B), shY + 1.6 * B);
+    g.moveTo(sd * (shX + 0.1 * B), shY + 0.3 * B); g.quadraticCurveTo(sd * (shX + 0.3 * B), shY + 0.9 * B, sd * (shX + 0.05 * B), shY + 1.3 * B); g.stroke();
+  }
+  // neck
+  for (let k = 0; k < 3; k++) { const y = -5.15 * B - k * 0.36 * B; ell(0, y, B * 0.24, B * 0.17, ink); ell(0, y, B * 0.19, B * 0.13, bone); }
+  // skull; the jaw drops when it breathes steam
+  const hy = -6.25 * B;
+  const open = Bs.atks.some(a => a.kind === 'sweep' && a.t > a.warn - 0.5 && a.t < a.warn + 0.5) ? B * 0.38 : B * 0.05 * (1 + Math.sin(S.t * 2));
+  g.fillStyle = ink; rr(-0.52 * B, hy + 0.45 * B + open, 1.04 * B, 0.42 * B, 0.18 * B); g.fill();
+  g.fillStyle = bone; rr(-0.46 * B, hy + 0.47 * B + open, 0.92 * B, 0.34 * B, 0.15 * B); g.fill();
+  ell(0, hy - 0.1 * B, 0.84 * B, 0.78 * B, ink); ell(0, hy - 0.1 * B, 0.78 * B, 0.72 * B, bone);
+  g.fillStyle = bone; rr(-0.55 * B, hy + 0.15 * B, 1.1 * B, 0.42 * B, 0.12 * B); g.fill();
+  g.strokeStyle = ink; g.lineWidth = Math.max(1, B * 0.04); g.beginPath();
+  for (let k = -3; k <= 3; k++) { g.moveTo(k * 0.13 * B, hy + 0.4 * B); g.lineTo(k * 0.13 * B, hy + 0.57 * B); g.moveTo(k * 0.12 * B, hy + 0.5 * B + open); g.lineTo(k * 0.12 * B, hy + 0.64 * B + open); }
+  g.stroke();
+  for (const sd of [-1, 1]) {
+    ell(sd * 0.32 * B, hy - 0.05 * B, 0.25 * B, 0.21 * B, '#24150f');
+    circ(sd * 0.32 * B, hy - 0.04 * B, 0.2 * B, 'rgba(255,200,80,.25)');
+    circ(sd * 0.32 * B, hy - 0.04 * B, 0.08 * B, Bs.dying >= 0 ? '#6a4a2a' : '#ffcf5a');
+  }
+  g.fillStyle = '#24150f'; g.beginPath(); g.moveTo(0, hy + 0.08 * B); g.lineTo(-0.1 * B, hy + 0.3 * B); g.lineTo(0.1 * B, hy + 0.3 * B); g.closePath(); g.fill();
+  g.strokeStyle = 'rgba(79,68,54,.6)'; g.lineWidth = Math.max(1, B * 0.035); g.beginPath();
+  g.moveTo(0.2 * B, hy - 0.75 * B); g.lineTo(0.32 * B, hy - 0.5 * B); g.lineTo(0.22 * B, hy - 0.35 * B); g.stroke();   // a crack across the crown
+  arms(true);
+  g.restore();
+  // foam where it meets the sea
+  g.strokeStyle = 'rgba(255,255,255,.45)'; g.lineWidth = Math.max(1.5, B * 0.08); g.beginPath();
+  g.ellipse(G.bx, G.wy0, B * 2.6, B * 0.28, 0, 0, TAU); g.stroke();
+}
+// warnings on the sand go under everything else
+function drawBossGround() {
+  const Bs = S.boss, blink = Math.floor(S.t * 8) % 2 === 0;
+  for (const a of Bs.atks) {
+    if (a.kind === 'sweep' && a.t < a.warn && blink) { const y0 = rowBottom(a.r) - T; g.fillStyle = 'rgba(220,40,30,.35)'; g.fillRect(0, y0, cw, T); }
+    if ((a.kind === 'slam' || a.kind === 'shard') && a.t >= 0 && a.t < a.warn) {
+      const k = clamp(a.t / a.warn, 0, 1), rad = (a.kind === 'slam' ? 1.15 : 0.5) * T;
+      const x = sx(a.c + 0.5), y = rowBottom(a.r) - T * 0.45;
+      ell(x, y, rad, rad * 0.45, `rgba(0,0,0,${0.15 + k * 0.25})`);
+      g.strokeStyle = blink ? 'rgba(255,70,50,.95)' : 'rgba(255,70,50,.5)'; g.lineWidth = Math.max(2, T * 0.06);
+      g.beginPath(); g.ellipse(x, y, rad, rad * 0.45, 0, 0, TAU); g.stroke();
+    }
+  }
+}
+// fists, steam, bone shards and rockets go over the top
+function drawBossFx() {
+  const Bs = S.boss, G = bossGeo(), B = G.B;
+  for (const a of Bs.atks) {
+    if (a.kind === 'slam') {
+      const fx = sx(a.c + 0.5), gy = rowBottom(a.r) - T * 0.5;
+      const down = a.t < a.warn - 0.22 ? 0 : a.t < a.warn ? (a.t - (a.warn - 0.22)) / 0.22 : a.t < a.warn + 0.35 ? 1 : 1 - (a.t - a.warn - 0.35) / 0.25;
+      const fy = gy - (1 - down * down) * T * 2.8;
+      const shx = G.bx + a.side * 2.9 * B, shy = G.wy - 5.4 * B;
+      const ex = (shx + fx) / 2 + a.side * T * 0.8, ey = Math.min(shy, fy) - T * 1.2;
+      boneLimb(shx, shy, ex, ey, Math.max(T * 0.34, B * 0.34)); boneLimb(ex, ey, fx, fy - T * 0.3, Math.max(T * 0.3, B * 0.28));
+      boneHand(fx, fy, T * 0.75, a.side, true);
+    } else if (a.kind === 'sweep' && a.t >= a.warn) {
+      const y0 = rowBottom(a.r) - T, x0 = a.dir > 0 ? sx(-1) : sx(a.front), x1 = a.dir > 0 ? sx(a.front) : sx(COLS + 1);
+      const fade = clamp(1 - ((a.t - a.warn) * 15 - (COLS + 2)) / 5, 0, 1);
+      g.fillStyle = `rgba(240,245,250,${0.55 * fade})`; g.fillRect(Math.min(x0, x1), y0 + T * 0.1, Math.abs(x1 - x0), T * 0.8);
+      for (let x = Math.min(x0, x1); x < Math.max(x0, x1); x += T * 0.45) circ(x, y0 + T * (0.35 + 0.25 * Math.sin(x * 0.07 + S.t * 9)), T * 0.38, `rgba(255,255,255,${0.5 * fade})`);
+    } else if (a.kind === 'shard' && a.t > a.warn - 0.25) {
+      const x = sx(a.c + 0.5), gy = rowBottom(a.r) - T * 0.4, k = clamp((a.t - (a.warn - 0.25)) / 0.25, 0, 1);
+      const y = gy - (1 - k) * T * 6, alpha = a.t > a.warn ? clamp(1 - (a.t - a.warn) / 0.55, 0, 1) : 1;
+      g.globalAlpha = alpha; g.fillStyle = '#e9e1cd'; g.strokeStyle = '#4f4436'; g.lineWidth = Math.max(1, T * 0.04);
+      g.beginPath(); g.moveTo(x, y); g.lineTo(x - T * 0.13, y - T * 0.8); g.lineTo(x + T * 0.13, y - T * 0.8); g.closePath(); g.fill(); g.stroke();
+      g.globalAlpha = 1;
+    }
+  }
+  for (const rk of Bs.rockets) {
+    const x = sx(rk.x + 0.5), y = rk.y;
+    const f = 0.7 + Math.random() * 0.5;
+    g.fillStyle = 'rgba(255,170,60,.85)'; g.beginPath(); g.moveTo(x - T * 0.08, y + T * 0.2); g.lineTo(x, y + T * (0.2 + 0.35 * f)); g.lineTo(x + T * 0.08, y + T * 0.2); g.closePath(); g.fill();
+    g.fillStyle = '#9aa5aa'; rr(x - T * 0.08, y - T * 0.2, T * 0.16, T * 0.42, T * 0.06); g.fill();
+    g.fillStyle = '#c4361f'; g.beginPath(); g.moveTo(x - T * 0.08, y - T * 0.18); g.lineTo(x, y - T * 0.36); g.lineTo(x + T * 0.08, y - T * 0.18); g.closePath(); g.fill();
+  }
+}
+
 /* ================= Particles ================= */
 function addPart(x, y, z, vx, vy, vz, life, col, size, grav = 9) { S.parts.push({ x, y, z, vx, vy, vz, life, max: life, col, size, grav }); }
 function dust(x, y, n, col) { for (let i = 0; i < n; i++) addPart(x + rand(-0.3, 0.3), y, 0.05, rand(-1.4, 1.4), rand(-0.4, 0.4), rand(0.5, 1.4), rand(0.3, 0.6), col, rand(0.05, 0.1), 4); }
@@ -725,7 +1054,7 @@ function update(dt) {
   while (W.top < rHi + 8) addRow();
   for (const [r, row] of W.rows) {
     if (r < rLo - 6) { W.rows.delete(r); continue; }
-    if (r <= rHi) updateRow(row, dt);
+    if (r <= rHi && !(S.boss && r < ARENA)) updateRow(row, dt);   // the sea behind you goes quiet in the final fight
   }
   // player
   if (P.hop) {
@@ -748,7 +1077,11 @@ function update(dt) {
   }
   // camera: follow the player, and creep forward once the run starts
   const pr = playerRow();
-  if (S.mode === 'play' || S.mode === 'dead') {
+  if (S.boss) {
+    // the final fight: the camera settles on the shore and nothing chases you any more
+    S.camY += (ARENA - (visRows < 17 ? 0.85 : 1.5) - S.camY) * Math.min(1, dt * 3);
+    if (S.mode === 'play' || S.mode === 'dead') updateBoss(dt);
+  } else if (S.mode === 'play' || S.mode === 'dead') {
     const target = pr - 4.2;
     if (target > S.camY) S.camY += (target - S.camY) * Math.min(1, dt * 5);
     if (S.started && S.mode === 'play') S.camY += (0.28 + difficulty(S.score) * 0.4) * dt;
@@ -896,6 +1229,7 @@ const GROUND_LOOK = {
   barren: { grass: ['#8d7f63', '#86795e'], road: ['#77706a', '#726b65'], titan: ['#7d6a52', '#78654e'], cannon: ['#6e665c', '#696157'] },
   dunes:  { grass: ['#e0c890', '#dac28a'], road: ['#c9ae78', '#c3a873'], water: ['#3f8aa0', '#3b849a'], titan: ['#cdb07c', '#c7aa76'], cannon: ['#b59a68', '#af9463'], crawl: ['#b89c6a', '#b29665'] },
   sea:    { grass: ['#e3cd95', '#dcc68f'], water: ['#2a5f86', '#285a80'], titan: ['#4f9fae', '#4b99a8'], cannon: ['#7a5c3e', '#74573a'] },
+  shore:  { grass: ['#dcc790', '#d6c18a'], forest: ['#1f4563', '#1d415d'] },
 };
 const lookOf = row => ZONES[row.z || 0].look;
 function groundCol(row) {
@@ -1443,6 +1777,7 @@ function playerScreen() {
 
 /* ---- the giant that follows you ---- */
 function drawChaser() {
+  if (S.boss) return;   // nothing chases you on the last shore
   const dz = playerRow() - S.camY;
   let rise = clamp((2.8 - dz) / 2.3, 0, 1);
   if (S.cause === 'grab') rise = 1;
@@ -1498,13 +1833,14 @@ function draw() {
   if (S.shake > 0) g.translate(rand(-1, 1) * S.shake * T * 0.25, rand(-1, 1) * S.shake * T * 0.25);
   const rLo = Math.floor(S.camY) - 4, rHi = Math.ceil(S.camY + visRows) + 1;
   for (let r = rHi; r >= rLo; r--) { const row = W.rows.get(r); if (row) drawGround(row); }
+  if (S.boss) { drawBossGround(); drawBoss(); }
   const ps = playerScreen();
   const pRow = Math.round(P.hop ? P.hop.tr : P.r);
   const drowned = !P.alive && (S.cause === 'drown' || S.cause === 'swept');
   let occluders = false;
   for (let r = rHi; r >= rLo; r--) {
     const row = W.rows.get(r);
-    if (!row) continue;
+    if (!row || (S.boss && r < ARENA - 1)) continue;
     if (row.type === 'grass' || row.type === 'forest') { for (const o of row.obs) drawProp(o, row); if (row.gas >= 0) drawGas(row); }
     else if (row.type === 'road') for (const it of row.items) drawVehicle(it, row);
     else if (row.type === 'water') for (const it of row.items) drawRaft(it, row);
@@ -1538,6 +1874,7 @@ function draw() {
     g.moveTo(ps.x - T * 0.1, ps.y - T * 0.4); g.lineTo(ax, ay); g.moveTo(ps.x + T * 0.1, ps.y - T * 0.4); g.lineTo(ax + T * 0.3, ay + T * 0.1); g.stroke();
     circ(ax, ay, T * 0.06, '#9aa5aa'); circ(ax + T * 0.3, ay + T * 0.1, T * 0.06, '#9aa5aa');
   }
+  if (S.boss) drawBossFx();
   // particles
   for (const p of S.parts) {
     const x = sx(p.x), y = rowBottom(p.y) - T * 0.24 - p.z * T, a = clamp(p.life / p.max, 0, 1);
@@ -1590,7 +1927,7 @@ function drawPlayerNow(ps, alpha = 1) {
 }
 
 /* ================= HUD ================= */
-let shownScore = -1, shownGas = -1;
+let shownScore = -1, shownGas = -1, shownProg = -1;
 function updateHud() {
   if (!S) return;
   if (S.score !== shownScore) { shownScore = S.score; $('score').textContent = S.score; }
@@ -1603,6 +1940,23 @@ function updateHud() {
     $('gasCount').textContent = S.gas;
     $('grappleBtn').classList.toggle('empty', S.gas < 1);
   }
+  // how far along the map you are (the skull at the end is the last shore)
+  const prog = clamp(S.score / ARENA, 0, 1);
+  if (prog !== shownProg) {
+    shownProg = prog;
+    $('barFill').style.width = (prog * 100).toFixed(2) + '%';
+    $('barMe').style.left = (prog * 100).toFixed(2) + '%';
+    const zi = zoneIdx(S.score);
+    $('trackLbl').textContent = ZONES[zi].name.replace(/^the /, '');
+    $('track').setAttribute('aria-label', `Progress: ${Math.round(prog * 100)}%, in ${ZONES[zi].name}`);
+  }
+}
+// tick marks on the progress bar for every wall and barrier
+for (const z of ZONES) if (z.wall) {
+  const t = document.createElement('span');
+  t.className = 'tk' + (z.wall.kind === 'stone' ? ' big' : '');
+  t.style.left = (z.end / ARENA * 100).toFixed(2) + '%';
+  $('bar').insertBefore(t, $('barMe'));
 }
 function syncSoundLabels() { for (const id of ['soundBtn1', 'soundBtn2']) $(id).textContent = 'Sound: ' + (muted ? 'off' : 'on'); }
 function toggleSound() { muted = !muted; store.set('muted', muted); syncSoundLabels(); if (!muted) { sfx.unlock(); sfx.gas(); } }
@@ -1726,7 +2080,7 @@ function focusOver(rank) {
 function gameOver() {
   if (S.mode !== 'dead') return;
   S.mode = 'over';
-  sfx.over();
+  if (S.cause === 'won') sfx.gate(); else sfx.over();
   local = recordScore(S.score);
   const isBest = S.score > 0 && S.score > best;
   if (S.score > best) { best = S.score; store.set('best', best); }
@@ -1741,7 +2095,7 @@ function gameOver() {
   $('overTitle').textContent = title;
   $('overWhy').textContent = why;
   const zi = zoneIdx(S.score);
-  $('overZone').textContent = `Made it to ${ZONES[zi].name} · zone ${zi + 1} of ${ZONES.length}`;
+  $('overZone').textContent = S.cause === 'won' ? 'Escaped the island. All 12 zones cleared!' : `Made it to ${ZONES[zi].name} · zone ${zi + 1} of ${ZONES.length}`;
   $('finalScore').textContent = S.score.toLocaleString();
   $('newBest').hidden = !isBest;
   overShown = true;
@@ -1843,7 +2197,7 @@ updateHud();
 $('playBtn').focus({ preventScroll: true });
 requestAnimationFrame(frame);
 // expose a tiny hook for automated playtests
-window.__titanHop = { get S() { return S; }, get P() { return P; }, get W() { return W; }, tryMove, grapple, die, ZONES, zoneIdx, getRow,
+window.__titanHop = { get S() { return S; }, get P() { return P; }, get W() { return W; }, tryMove, grapple, die, ZONES, zoneIdx, getRow, startBoss, ARENA,
   step(sec, dt = 1 / 60) { for (let t = 0; t < sec; t += dt) update(dt); draw(); } };
 })();
 </script>
